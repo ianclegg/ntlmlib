@@ -1,6 +1,6 @@
-ntlmlib (ALPHA)
+# ntlmlib (ALPHA)
 
-Vision:
+## Vision:
 A robust, fast and efficient 'first-class' Python Library for NTLM authentication, signing and encryption
 
 - Support for NTLMv1 and NTLMv2 authentication
@@ -20,6 +20,7 @@ Known Issues:
 
 Example:
 
+```python
 # Setup the NTLM context with your credentials, optionally set LAN Manager Compatibility and required integrity
 auth = PasswordAuthentication('SERVER2012', 'Administrator', 'Pa55w0rd', compatibility=3, timestamp=True)
 ntlm_context = NtlmContext(auth, session_security='none')
@@ -34,5 +35,5 @@ negotiate = context.send(None)
 authenticate = context.send(challenge)
 
 # < Now send the authenticate token to the server to complete authentication >
-
+```
 
