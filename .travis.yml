@@ -8,8 +8,11 @@ python:
 install:
 - pip install -r build_requirements.txt
 - pip install -r requirements.txt
+script:
+- py.test -v --cov winrm --cov-report term-missing ntlmlib/tests/ci
 after_success:
 - pushd .
+- coveralls
 - pwd && cd src
 - python setup.py sdist
 - cd ..
