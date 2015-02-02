@@ -1,0 +1,26 @@
+language: python
+python:
+- 2.6
+- 2.7
+- 3.2
+- 3.3
+- pypy
+install:
+- pip install -r build_requirements.txt
+- pip install -r requirements.txt
+after_success:
+- pushd .
+- pwd && cd src
+- python setup.py sdist
+- cd ..
+- pwd && cd src/dist
+- pip install ntlmlib-*.tar.gz
+- echo "y" | pip uninstall ntlmlib
+- popd
+deploy:
+  provider: pypi
+  user: iclegg
+  distributions: sdist
+  password:
+    secure: mAVoubX57aExoukVpjQ+JZpVdXEBw78x0Xb6GiLh5TJNLZLjCFB1XwzXawADhaZiodD/AYl3EDAnVAYWh1yfJLst5cCgcUHqhvSTuuHQRoMoqrQPYBHDLO+erAqGFhX0GcvkAELWZueTXqScxq7SggUVa10T5KiMH1qVEYhukoE=
+	
