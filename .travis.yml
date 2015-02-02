@@ -25,4 +25,4 @@ deploy:
   user: iclegg
   distributions: sdist
   password:
-    secure: mAVoubX57aExoukVpjQ+JZpVdXEBw78x0Xb6GiLh5TJNLZLjCFB1XwzXawADhaZiodD/AYl3EDAnVAYWh1yfJLst5cCgcUHqhvSTuuHQRoMoqrQPYBHDLO+erAqGFhX0GcvkAELWZueTXqScxq7SggUVa10T5KiMH1qVEYhukoE=
+    secure: r3rO2mEJXByATsc5Rqsd4+NUpGvacyhnJhZva6no1XQNgemUhE2NlABqeKnaipz/hafp+Z/0yH90Hw871lolAWDpUfI2vUZ+bOcwZ1J9EFiZwJnZn6Sb+XIyLMutBImWp2Zl8nOfFxW0Lv9OIPqtHCY+OBo97ZhPv7B0SPlhtG0=
