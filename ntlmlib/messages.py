@@ -209,7 +209,6 @@ class Negotiate(Structure, Version, Message):
             self['domain_offset'] = 32 + version_len
         if (self['flags'] & NegotiateFlag.NTLMSSP_DOMAIN) == NegotiateFlag.NTLMSSP_DOMAIN:
             self['host_offset'] = 32 + len(self['domain_name']) + version_len
-        self.dump_flags()
         return Structure.get_data(self)
 
     def from_string(self, data):
@@ -296,7 +295,6 @@ class Challenge(Structure, Version, Message):
         self['target_name'] = target_name
         self['os_version'] = version
         self['target_info_fields'] = target_info
-        self.dump_flags()
         return self
 
 
@@ -384,7 +382,6 @@ class ChallengeResponse(Structure, Version, Message):
         self['lanman_offset'] = self['host_offset'] + len(self['host_name'])
         self['ntlm_offset'] = self['lanman_offset'] + len(self['lanman'])
         self['session_key_offset'] = self['ntlm_offset'] + len(self['ntlm'])
-        self.dump_flags()
         return Structure.get_data(self)
 
     def from_string(self,data):

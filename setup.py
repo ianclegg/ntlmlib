@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with 'ntlmlib'.  If not, see <http://www.gnu.org/licenses/>.
 import os
+import re
 import sys
 import urllib
 from setuptools import setup
@@ -29,6 +30,28 @@ try:
 except ImportError:
     long_description = ''
 
+# We will run git to get the latest 'tag' and use this to release to PyPi
+import subprocess
+try:
+    process = subprocess.Popen(['git', 'describe', '--abbrev=0'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    process.wait()
+    git_tag = process.stdout.readline()
+
+    if process.returncode == 0:
+        # versions must be in the range: 0.0.0 to 999.999.999
+        version_match = re.match('(?:.*)[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(?:.*)', git_tag)
+        if version_match is None and len(version_match.groups()) == 1:
+            __version__ = version_match.group(1)
+        else:
+            print "git tag '%s' is not a valid version number" % git_tag
+    else:
+        print "'git describe' failed to find the latest tag"
+
+except OSError:
+    print "Unable to run 'git describe --abbrev=0', ensure git is correctly installed"
+
+print 'build package version: %s' % __version__
+print 'build package name: %s' % project_name
 
 class BootstrapEnvironmentCommand(Command):
     description = 'create project development environment from scratch'
