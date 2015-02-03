@@ -35,13 +35,13 @@ import subprocess
 try:
     process = subprocess.Popen(['git', 'describe', '--abbrev=0'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     process.wait()
-    git_tag = process.stdout.readline()
+    git_tag = process.stdout.readline().strip()
 
     if process.returncode == 0:
         # versions must be in the range: 0.0.0 to 999.999.999
         version_match = re.match('(?:.*)[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(?:.*)', git_tag)
-        if version_match is None and len(version_match.groups()) == 1:
-            __version__ = version_match.group(1)
+        if version_match is None:
+            __version__ = version_match.group()
         else:
             print "git tag '%s' is not a valid version number" % git_tag
     else:
