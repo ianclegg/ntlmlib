@@ -330,9 +330,9 @@ class ChallengeResponse(Structure, Version, Message):
         ('session_key_offset','<L'),
         ('flags','<L'),
         ('VersionLen','_-Version','self.check_version(self["flags"])'),
-        ('Version',':=""'),
-        ('MICLen','_-MIC','self.check_mic(self["flags"])'),
-        ('MIC',':=""'),
+        ('version',':=""'),
+        ('MICLen','_-MIC'),
+        ('mic',':=""'),
         ('domain_name',':'),
         ('user_name',':'),
         ('host_name',':'),
@@ -343,12 +343,13 @@ class ChallengeResponse(Structure, Version, Message):
     def __init__(self, flags, lm_response, nt_response, domain, username, session_key=None, host_name=None):
         Structure.__init__(self)
         self['flags'] = flags
-        a = len(lm_response)
         self['lanman'] = lm_response
         self['ntlm'] = nt_response
         self['domain_name'] = domain.encode('utf-16le')
         self['user_name'] = username.encode('utf-16le')
         self['host_name'] = ''
+        self['version'] = ''
+        self['mic'] = ''
         self['session_key'] = session_key
 
     def check_version(self, flags):
@@ -356,13 +357,6 @@ class ChallengeResponse(Structure, Version, Message):
            if flags & NegotiateFlag.NTLMSSP_VERSION == 0:
               return 0
         return 8
-
-    def check_mic(self, flags):
-        # TODO: Find a proper way to check the MIC is in there
-        if flags is not None:
-           if flags & NegotiateFlag.NTLMSSP_VERSION == 0:
-              return 0
-        return 16
 
     def get_data(self):
         if len(self.fields['host_name']) > 0:
@@ -375,9 +369,8 @@ class ChallengeResponse(Structure, Version, Message):
         #    version_len = 8
         #else:
          #   version_len = 0
-
-        self['domain_offset'] = 64
-        self['user_offset'] = 64 + len(self['domain_name'])
+        self['domain_offset'] = 64 + len(self['mic']) + len(self['version'])
+        self['user_offset'] = self['domain_offset'] + len(self['domain_name'])
         self['host_offset'] = self['user_offset'] + len(self['user_name'])
         self['lanman_offset'] = self['host_offset'] + len(self['host_name'])
         self['ntlm_offset'] = self['lanman_offset'] + len(self['lanman'])

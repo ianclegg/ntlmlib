@@ -13,13 +13,11 @@
 # limitations under the License.
 __author__ = 'ian.clegg@sourcewarp.com'
 
-from Crypto.Cipher import DES
-from Crypto.Hash import MD5
 from Crypto.Hash import MD4
-from Crypto.Util import number
-from Crypto.Cipher import ARC4
-import hmac
-import random
+from Crypto.Hash import MD5
+from Crypto.Hash import HMAC
+from Crypto.Cipher import DES
+import os
 import struct
 import calendar
 import time
@@ -29,25 +27,47 @@ from constants import NegotiateFlag
 
 class PasswordAuthentication(object):
     """
-    Initializes the PasswordAuthentication with the supplied domain, username and password
+    Initializes the PasswordAuthentication with the supplied domain, username and password.
     """
     known_des_input = "KGS!@#$%"
 
     def __init__(self, domain, username, password, **kwargs):
         """
-        Initializes the PasswordAuthentication with the supplied domain, username and password. Alternatively, if the
-        password is not available, a set of password hashes can be supplied in the kwargs dictionary.
-        Note: Unlike Unix password hashes, the LM and NTLM hashes are password-equivalents in the context of the
-        response calculations; they must be protected as much as the passwords themselves.
+        Initializes the PasswordAuthentication with the supplied domain, username and password.
 
         :param domain: The windows domain name
         :param user: The windows username
         :param password: The users password
-        :param: kwargs: A optional dictionary which contains the external hashes where the password is not available
-                        and/or overrides the default the Lan Manager Compatibility Level of 3
-                challenge
-                ansi_hash        - A pre-computed LM Hash of the password
-                unicode_hash     - A pre-computed NTLM Hash of the password
+        :param: kwargs: A optional dictionary which can be used to configure
+
+                Compatibility Flags
+                -------------------
+                disable_mic       - Windows Vista and later support the inclusion of a MIC (Message Integrity Code)
+                                    during authentication. MIC codes are optional during authentication, but offer
+                                    obvious security benefits. Setting this flag to 'True' will disable then generation
+                                    of MIC codes; emulating the behavior of Windows XP and earlier.
+                                    Default and recommended value is 'False'
+                disable_timestamp - When 'True' the timestamp in the MsvAvTimestamp pair (if present) is used the NTLMv2
+                                    computation. Setting the flag to 'False' emulates Windows XP/2003 and earlier clients
+                                    which ignore the MsvAvTimestamp. Default and recommended value is 'True'
+                disable_only_128  - Windows NT4 SP4 and later support 128bit session keys. If session security is
+                                    negotiated with anything less the protocol may have been compromised. Setting this
+                                    flag to 'True' will enable support for 56bit and 40bit keys by disabling exceptions
+                                    which are normally raised if 128bit encryption is not negotiated.
+                                    The default and recommended value is 'False'
+
+                Application Supplied Data
+                -------------------------
+                spn_target        - Service principal name (SPN) of the service to which the client wishes to
+                                   authenticate. Default value is 'None'
+                                   It is only necessary to include a Client Supplied TargetName when explicitly required
+                                   by the server application. SPN Target Name is only supported on Windows Vista or
+                                   later.
+                channel_bindings - A byte string representing the 'gss_channel_bindings_struct' which will be hashed
+                                   and sent during authentication. If the value is 'None' channel bindings will not be
+                                   sent. Default value is 'None'
+                                   It is only necessary to include Channel Bindings if the server application explicitly
+                                   requires it. Channel Bindings are only supported on Windows Server 2008 R2 and later.
                 compatibility    - Lan Manager Compatibility Level to use
                                     On Windows Clients the level is set by an 'Administrator' in
                                     HKLM\SYSTEM\CurrentControlSet\Control\Lsa\LmCompatibilityLevel
@@ -71,26 +91,12 @@ class PasswordAuthentication(object):
         self._lm_compatibility = kwargs.get('compatibility', 3)
 
         # Initialise a random default 8 byte NTLM client challenge
-        self._random = random.SystemRandom()
-        self._client_challenge = number.long_to_bytes(self._random.getrandbits(8 * 8))
-        self._client_key = number.long_to_bytes(self._random.getrandbits(16 * 8))
+        self._client_challenge = os.urandom(8)
 
         # NTLM participants can include additional data in the TargetInfo (AV_PAIRS) to prevent MiTM and replay attacks
-        # we include them by default, but allow the user to override this in case of compatibility issues.
-        # MsvAvTimestamp is supported in Windows Vista / Windows 2008 and later
-        # MsvChannelBindings is supported in Windows 7 and Windows 2008 R2 and later
+        #
         self._av_timestamp = kwargs.get('timestamp', True)
-        self._av_channel_bindings = kwargs.get('channel_bindings', True)
-
-        # If any external hashes have been supplied in kwargs, they must all be present
-        if any(key in kwargs for key in ('challenge', 'lm_hash', 'ntlm_hash')):
-            if not all(key in kwargs for key in ('challenge', 'lm_hash', 'ntlm_hash')):
-                raise Exception("Please specify all hashes: challenge, lm_hash and ntlm_hash")
-            elif self._password is not None:
-                raise Exception("When using hashes, the password must be 'None'")
-        elif self._password is None:
-            raise Exception("Please specify a password or all hashes: challenge, lm_hash and ntlm_hash")
-
+        self._av_channel_bindings = kwargs.get('channel_bindings', None)
 
     def get_domain(self):
         """
@@ -146,45 +152,52 @@ class PasswordAuthentication(object):
         :param challenge: The 8-byte challenge message generated by the server
         :return: A tuple containing the 24 byte NTLM Hash, Session Key and TargetInfo
         """
+        # TODO: IMPLEMENT THE FOLLOWING FEATURES
+        # If NTLM v2 authentication is used and the CHALLENGE_MESSAGE does not contain both MsvAvNbComputerName and
+        # MsvAvNbDomainName AVPairs and either Integrity is TRUE or Confidentiality is TRUE, then return STATUS_LOGON_FAILURE.
+
+        # If NTLM v2 authentication is used and the CHALLENGE_MESSAGE contains a TargetInfo field, the client SHOULD NOT send
+        # the LmChallengeResponse and SHOULD set the LmChallengeResponseLen and LmChallengeResponseMaxLen fields in the
+        # AUTHENTICATE_MESSAGE to zero.
+
+
         # If lm compatibility level is 3 or lower, but the server negotiated NTLM2, generate an
         # NTLM2 response in preference to the weaker NTLMv1.
         if flags & NegotiateFlag.NTLMSSP_NTLM2_KEY and self._lm_compatibility < 3:
             response, key = PasswordAuthentication.get_ntlm2_response(self._password, challenge, self._client_challenge)
-
         elif 0 <= self._lm_compatibility < 3:
             response, key = PasswordAuthentication.get_ntlmv1_response(self._password, challenge)
         elif 2 < self._lm_compatibility <= 5:
-            # There is an issue around timestamps here. Are we supported to provide one, or get it
-            # if there is one I think we must use it!
-            timestamp = PasswordAuthentication._get_ntlm_timestamp()
-            timestamp = target_info[TargetInfo.NTLMSSP_AV_TIME][1]
+            #
+            # We should use the timestamp included in TargetInfo, if no timestamp is set we generate one
+            # and add it to the outgoing TargetInfo.
+            if target_info is None:
+                target_info = TargetInfo()
+            if target_info[TargetInfo.NTLMSSP_AV_TIME] is None:
+                timestamp = PasswordAuthentication._get_ntlm_timestamp()
+            else:
+                timestamp = target_info[TargetInfo.NTLMSSP_AV_TIME][1]
 
-            # See [MS-NLMP] for pseudo code to set MsvAvTimestamp,
-            if self._av_timestamp is True:
-                if target_info is None:
-                    target_info = TargetInfo()
-                if target_info[TargetInfo.NTLMSSP_AV_TIME] is None:
-                    target_info[TargetInfo.NTLMSSP_AV_TIME] = timestamp
-                    # TODO: Windows Vista and later will also set the MIC field if _av_timestamp is valid
+            # TODO: Windows Vista and later will also set the MIC field if _av_timestamp is valid
+            # we meed to set the av flag bit and then insert the mic code into its field
 
             # Calculating channel bindings is poorly documented. It is implemented in winrmlib, and needs to be
             # moved here
             if self._av_channel_bindings is True and channel_binding is not None:
                 target_info[TargetInfo.NTLMSSP_AV_CHANNEL_BINDINGS] = channel_binding
 
-            response, key, target_info = PasswordAuthentication.get_ntlmv2_response(self._domain, self._username,
-                                                                                    self._password.encode('utf-16le'),
-                                                                                    challenge, self._client_challenge,
-                                                                                    timestamp, target_info)
+            response, key, target_info = PasswordAuthentication.get_ntlmv2_response(
+                self._domain, self._username, self._password.encode('utf-16le'), challenge,
+                self._client_challenge, timestamp, target_info)
         else:
             raise Exception('Unknown Lan Manager Compatibility Level')
 
         # If the we negotiated key exchange, generate a new new master key for the session, this is RC4-encrypted
         # with the previously selected session key. Even with key weakening the full 128bit master session key is
         # always sent to the server. This process is the same in across all NTLM versions.
-        if flags & NegotiateFlag.NTLMSSP_KEY_EXCHANGE:
-            cipher = ARC4.new(key)
-            key = cipher.encrypt(self._client_key)
+        #if flags & NegotiateFlag.NTLMSSP_KEY_EXCHANGE:
+        #    cipher = ARC4.new(key)
+        #    key = cipher.encrypt(self._client_key)
 
         return response, key, target_info
 
@@ -337,7 +350,7 @@ class PasswordAuthentication(object):
             raise Exception("Password parameter is required")
         md4 = MD4.new()
         md4.update(password)
-        hmac_context = hmac.new(md4.digest())
+        hmac_context = HMAC.new(md4.digest())
         hmac_context.update(user.upper().encode('utf-16le'))
         hmac_context.update(domain.encode('utf-16le'))
         return hmac_context.digest()
@@ -353,7 +366,7 @@ class PasswordAuthentication(object):
         [MS-NLMP] v20140502 NT LAN Manager (NTLM) Authentication Protocol
         3.3.2 NTLM v2 Authentication
         """
-        hmac_context = hmac.new(response_key)
+        hmac_context = HMAC.new(response_key)
         hmac_context.update(server_challenge)
         hmac_context.update(client_challenge)
         return hmac_context.digest()
@@ -366,7 +379,7 @@ class PasswordAuthentication(object):
         concatenated with the 8 byte client client_challenge
         """
         ntlmv2_hash = PasswordAuthentication.ntowfv2(domain, username, password.encode('utf-16le'))
-        hmac_context = hmac.new(ntlmv2_hash)
+        hmac_context = HMAC.new(ntlmv2_hash)
         hmac_context.update(server_challenge)
         hmac_context.update(client_challenge)
         return hmac_context.digest() + client_challenge
@@ -419,11 +432,22 @@ class PasswordAuthentication(object):
         proof = PasswordAuthentication._compute_response(response_key, server_challenge, proof_material)
 
         # The master session key derivation
-        session_key = hmac.new(response_key)
+        session_key = HMAC.new(response_key)
         session_key.update(proof)
         session_master_key = session_key.digest()
         return str(proof) + proof_material, session_master_key, target_info
 
+
+    # the key depends on the flags and intermediate material
+    def get_user_session_key(self, flags):
+        a = self._password
+        if flags & NegotiateFlag.NTLMSSP_NTLM2_KEY:
+            # NTLM v2 Session Security
+            pass
+        else:
+            # NTLM v1 Session Security
+            pass
+        pass
 
 
 """

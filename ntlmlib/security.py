@@ -106,7 +106,8 @@ class _Ntlm2Session(object):
 
     def __init__(self, flags, session_key):
         self.key_exchange = True
-        self.signing_sequence = 0
+        self.client_sequence = 0
+        self.server_sequence = 0
         session_key = _Ntlm2Session._weaken_key(flags, session_key)
         self.client_signing_key = _Ntlm2Session._generate_key(session_key + client_signing)
         self.server_signing_key = _Ntlm2Session._generate_key(session_key + server_signing)
@@ -150,22 +151,22 @@ class _Ntlm2Session(object):
         :param message: The message to be signed
         :return: The signature for supplied message
         """
-        mac = _Ntlm2MessageSignature()
         hmac_context = hmac.new(self.client_signing_key)
-        hmac_context.update(struct.pack('<i', self.signing_sequence) + message)
+        hmac_context.update(struct.pack('<i', self.client_sequence) + message)
 
         # If a key exchange key is negotiated the first 8 bytes of the HMAC MD5 are encrypted with RC4
         if self.key_exchange:
-            signature = self.client_seal.encrypt(hmac_context.digest()[:8])
+            checksum = self.client_seal.encrypt(hmac_context.digest()[:8])
         else:
-            signature = hmac_context.digest()[:8]
+            checksum = hmac_context.digest()[:8]
 
+        mac = _Ntlm2MessageSignature()
         mac['version'] = 1
-        mac['checksum'] = struct.unpack('<q', signature)[0]
-        mac['sequence'] = self.signing_sequence
+        mac['checksum'] = struct.unpack('<q', checksum)[0]
+        mac['sequence'] = self.client_sequence
 
         # Increment the sequence number after signing each message
-        self.signing_sequence += 1
+        self.client_sequence += 1
         return str(mac)
 
     def verify(self, message, signature):
@@ -174,20 +175,45 @@ class _Ntlm2Session(object):
         :param message: The message whose signature will verified
         :return: True if the signature is valid, otherwise False
         """
-        raise Exception('NTLM2 verification is not yet implemented')
+        # Parse the signature header
+        mac = _Ntlm2MessageSignature()
+        mac.from_string(signature)
 
-    def seal(self, message):
+        # validate the sequence
+        if mac['sequence'] != self.server_sequence:
+            raise Exception("The message was not received in the correct sequence.")
+
+        # extract the supplied checksum
+        checksum = struct.pack('<q', mac['checksum'])
+        if self.key_exchange:
+            checksum = self.server_seal.decrypt(checksum)
+
+        # calculate the expected checksum for the message
+        hmac_context = hmac.new(self.server_signing_key)
+        hmac_context.update(struct.pack('<i', self.server_sequence) + message)
+        expected_checksum = hmac_context.digest()[:8]
+
+        # validate the supplied checksum is correct
+        if checksum != expected_checksum:
+            raise Exception("The message has been altered")
+
+        self.server_sequence += 1
+
+    def encrypt(self, message):
         """
         Encrypts the supplied message using NTLM2 Session Security
         :param message: The message to be encrypted
         :return: The signed and encrypted message
         """
-        encrypted_message = self.client_seal.encrypt(message)
-        signature = self.sign(message)
-        return signature + encrypted_message
+        return self.client_seal.encrypt(message)
 
-    def unseal(self, message):
-        raise Exception('NTLM2 decryption is not yet implemented')
+    def decrypt(self, cipher_text):
+        """
+        Decrypts the supplied message using NTLM2 Session Security
+        :param message: The ciphertext to be decrypted
+        :return: The original plaintext
+        """
+        return self.server_seal.decrypt(cipher_text)
 
 
 class Ntlm2Signing(_Ntlm2Session):
@@ -202,11 +228,28 @@ class Ntlm2Signing(_Ntlm2Session):
 
 
 class Ntlm2Sealing(_Ntlm2Session):
+    """
+
+    """
     def __init__(self, flags, session_key):
         _Ntlm2Session.__init__(self, flags, session_key)
 
     def wrap(self, message):
-        return _Ntlm2Session.seal(self, message)
+        """
+        NTM GSSwrap()
+        :param message: The message to be encrypted
+        :return: The signed and encrypted message
+        """
+        cipher_text = _Ntlm2Session.encrypt(self, message)
+        signature = _Ntlm2Session.sign(self, message)
+        return cipher_text, signature
 
-    def unwrap(self, message):
-        return _Ntlm2Session.unseal(self, message)
+    def unwrap(self, message, signature):
+        """
+        NTLM GSSUnwrap()
+        :param message: The message to be encrypted
+        :return: The signed and encrypted message
+        """
+        plain_text = _Ntlm2Session.decrypt(self, message)
+        _Ntlm2Session.verify(self, plain_text, signature)
+        return plain_text

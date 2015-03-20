@@ -13,13 +13,22 @@
 # limitations under the License.
 __author__ = 'ian.clegg@sourcewarp.com'
 
+import os
+import struct
+import logging
+
 from socket import gethostname
+from Crypto.Hash import HMAC
+from Crypto.Cipher import ARC4
 
 from ntlmlib.messages import Negotiate
 from ntlmlib.messages import Challenge
 from ntlmlib.messages import ChallengeResponse
+from ntlmlib.messages import TargetInfo
 from ntlmlib.security import Ntlm2Sealing
 from ntlmlib.constants import NegotiateFlag
+
+logger = logging.getLogger(__name__)
 
 
 class NtlmContext(object):
@@ -31,8 +40,12 @@ class NtlmContext(object):
         if session_security not in ('none', 'sign', 'encrypt'):
             raise Exception("session_security must be none, sign or encrypt")
 
+        # Initialise a random default 8 byte NTLM client challenge
+        self._os_version = kwargs.get('version', (6, 6, 0))
+
         # TODO, should accept a list of possible in order of preference
-        #   encrypt, sign, none would not raise an error
+        # these should probably be 'integrity' and 'confidentiality'
+        # encrypt, sign, none would not raise an error
 
         # TODO, we should set the negotiate flags based on the lm level :-s
         # Note, this still works with 9x and N4.0 though
@@ -70,62 +83,79 @@ class NtlmContext(object):
         :return: The response to be returned to the server
         """
         # Generate the NTLM Negotiate Request
-        challenge_data = yield self._negotiate(self.flags).get_data()
+        negotiate_token = self._negotiate(self.flags)
+        challenge_token = yield negotiate_token
 
-        # De-serialize the challenge
-        challenge = Challenge()
-        challenge.from_string(challenge_data)
-
-        # Generate the NTLM Challenge Response
-        yield self._challenge_response(challenge).get_data()
+        # Generate the Authenticate Response
+        authenticate_token = self._challenge_response(negotiate_token, challenge_token)
+        yield authenticate_token
 
     def wrap_message(self, message):
         """
-        Idiomatic Python implementation of initialize_security_context, implemented as a generator function using
-        yield to both accept incoming and return outgoing authentication tokens
-        :return: The response to be returned to the server
+        Cryptographically signs and optionally encrypts the supplied message. The message is only encrypted if
+        'confidentiality' was negotiated, otherwise the message is left untouched.
+        :return: A tuple containing the message signature and the optionally encrypted message
         """
         if not self.is_established:
             raise Exception("Context has not been established")
         if self._wrapper is None:
             raise Exception("Neither sealing or signing have been negotiated")
         else:
-            return self._wrapper.seal(message)
+            return self._wrapper.wrap(message)
 
 
-    def unwrap(self):
+    def unwrap_message(self, message, signature):
+        # TODO implement signature exceptions and document
         """
-
-        :return: The wrapped message to be sent to the server
+        Verifies the supplied signature against the message and decrypts the message if 'confidentiality' was
+        negotiated.
+        A SignatureException is raised if the signature cannot be parsed or the version is unsupported
+        A SequenceException is raised if the sequence number in the signature is incorrect
+        A ChecksumException is raised if the in the signature checksum is invalid
+        :return: The decrypted message
         """
         if not self.is_established:
             raise Exception("Context has not been established")
         if self._wrapper is None:
             raise Exception("Neither sealing or signing have been negotiated")
         else:
-            return self._wrapper.seal(message)
+            return self._wrapper.unwrap(message, signature)
 
     def _negotiate(self, flags):
         # returns the response
-        return Negotiate(flags, self._authenticator.get_domain(), gethostname())
+        return Negotiate(flags, self._authenticator.get_domain(), gethostname()).get_data()
 
     def hack(self, flags, session):
         self._wrapper = Ntlm2Sealing(flags, session)
 
-    def _challenge_response(self, challenge_token):
-        flags = challenge_token['flags']
+    def _challenge_response(self, negotiate_token, challenge_token):
+        challenge = Challenge()
+        challenge.from_string(challenge_token)
+        flags = challenge['flags']
+        nonce = challenge['challenge']
+        challenge_target = challenge['target_info_fields']
 
-        # Compute the response material, this is rather complicated interplay between what client level we are
-        # emulating and what the server is negotiating. It is made even more complex by when signing and sealing
-        # are in use.
+        # Compute the ntlm response; this depends on an interplay between the ntlm challenge flags and the settings
+        # used to construct the 'authenticator' object
+        ntlm_response, session_key, target_info = self._authenticator.get_ntlm_response(flags, nonce, challenge_target)
 
-        # TODO: Check for the Target Info flag, if set we need to do the dance
+        # [MS-NLMP] v20140502 NT LAN Manager (NTLM) Authentication Protocol (Page 46)
+        # If NTLM v2 authentication is used and the CHALLENGE_MESSAGE contains a TargetInfo field, the client SHOULD
+        # NOT send the LmChallengeResponse and SHOULD set the LmChallengeResponseLen and LmChallengeResponseMaxLen
+        if challenge_target is None and target_info is None:
+            lm_response = None
+        else:
+            lm_response = self._authenticator.get_lm_response(flags, nonce)
 
-        challenge = challenge_token['challenge']
-        target_info = challenge_token['target_info_fields']
-
-        ntlm_response, session_key, target_info = self._authenticator.get_ntlm_response(flags, challenge, target_info)
-        lm_response = self._authenticator.get_lm_response(flags, challenge)
+        # [MS-NLMP] v20140502 NT LAN Manager (NTLM) Authentication Protocol (Page 46)
+        # If the we negotiated key exchange, generate a new new master key for the session, this is RC4-encrypted
+        # with the previously selected session key.
+        # "This capability SHOULD be used because it improves security for message integrity or confidentiality"
+        if flags & NegotiateFlag.NTLMSSP_KEY_EXCHANGE:
+            cipher = ARC4.new(session_key)
+            exported_session_key = cipher.encrypt(os.urandom(16))
+        else:
+            exported_session_key = session_key
 
         # Ensure the negotiated flags guarantee at least the minimum level of session security required by the
         # client when the context was constructed
@@ -135,20 +165,64 @@ class NtlmContext(object):
         if 'sign' in self._session_security and not flags & NegotiateFlag.NTLMSSP_SIGN:
             raise Exception("failed to negotiate session encryption")
 
+        authenticate = ChallengeResponse(flags, lm_response, ntlm_response,
+                                         self._authenticator.get_domain(), self._authenticator.get_username(),
+                                         exported_session_key)
+
+        # If the authenticate response has the MIC flag set, we must calculate and set the mic field the 'authenticator'
+        # object determines when mic code generation is required and sets this flag
+        if _mic_required(target_info['target_info_fields']):
+            _add_mic(authenticate, session_key, negotiate_token, challenge_token)
+
         # If session security was negotiated we should construct an appropriate object to perform the subsequent
         # message wrapping and unwrapping
         if flags & NegotiateFlag.NTLMSSP_SEAL:
-            self._wrapper = Ntlm2Sealing(flags, self._authenticator.get_session_key())
+            self._wrapper = Ntlm2Sealing(flags, session_key)
         elif flags & NegotiateFlag.NTLMSSP_SIGN:
             self._wrapper = Ntlm2Signing(flags, session_key)
 
-        if flags & NegotiateFlag.NTLMSSP_VERSION:
-            flags &= 0xffffffff ^ NegotiateFlag.NTLMSSP_VERSION
-        if flags & NegotiateFlag.NTLMSSP_NTLM_KEY:
-           flags &= 0xffffffff ^ NegotiateFlag.NTLMSSP_NTLM_KEY
+        # TODO: Check the returned flags are set correctly
+        #if flags & NegotiateFlag.NTLMSSP_VERSION:
+        #    flags &= 0xffffffff ^ NegotiateFlag.NTLMSSP_VERSION
+        #if flags & NegotiateFlag.NTLMSSP_NTLM_KEY:
+        #   flags &= 0xffffffff ^ NegotiateFlag.NTLMSSP_NTLM_KEY
 
         self.is_established = True
         self.flags = flags
 
-        return ChallengeResponse(flags, lm_response, ntlm_response,
-                                 self._authenticator.get_domain(), self._authenticator.get_username(), session_key)
+        return authenticate.get_data()
+
+def _mic_required(target_info):
+    """
+    Checks the MsvAvFlags field of the supplied TargetInfo structure to determine in the MIC flags is set
+    :param target_info: The TargetInfo structure to check
+    :return: a boolean value indicating that the MIC flag is set
+    """
+    if target_info is not None and target_info[TargetInfo.NTLMSSP_AV_FLAGS] is not None:
+        flags = target_info[TargetInfo.NTLMSSP_AV_FLAGS]
+        return bool(flags & 0x2)
+
+def _add_mic(authenticate, session_key, negotiate_token, challenge_token):
+    """
+
+    :param authenticate:
+    :param session_key:
+    :param negotiate_token:
+    :param challenge_token:
+    :return:
+    """
+    # before computing the MIC, the version field must be preset and the MIC
+    # field must be zeroed out of the authenticate message.
+    # WE NEED TO SET THE AV FLAG TO!! WHEN, HOW
+    authenticate['mic'] = '\x00' * 16
+    # TODO determine version we will use, Windows 7 for now
+    authenticate['version'] = '\x06\x01\xb1\x1d\x00\x00\x00\x0f'
+    authenticate_token = authenticate.get_data()
+
+    # compute the MIC
+    mic = HMAC.new(session_key)
+    mic.update(negotiate_token)
+    mic.update(challenge_token)
+    mic.update(authenticate_token)
+    return mic.digest()
+
