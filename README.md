@@ -1,4 +1,4 @@
-# ntlmlib (ALPHA)
+# ntlmlib (ALPHA) [![Build Status](https://travis-ci.org/ianclegg/ntlmlib.svg?branch=master)](https://travis-ci.org/ianclegg/ntlmlib) [![Downloads](https://pypip.in/download/ntlmlib/badge.svg)](https://pypi.python.org/pypi/ntlmlib/) [![Latest Version](https://pypip.in/version/ntlmlib/badge.svg)](https://pypi.python.org/pypi/ntlmlib/)
 
 ## Vision:
 A robust, fast and efficient 'first-class' Python Library for NTLM authentication, signing and encryption

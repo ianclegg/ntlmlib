@@ -33,7 +33,7 @@ except ImportError:
 # We will run git to get the latest 'tag' and use this to release to PyPi
 import subprocess
 try:
-    process = subprocess.Popen(['git', 'describe', '--abbrev=0'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    process = subprocess.Popen(['git', 'describe', '--tags', '--abbrev=0'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     process.wait()
     git_tag = process.stdout.readline().strip()
 

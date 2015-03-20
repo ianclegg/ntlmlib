@@ -30,7 +30,18 @@ from ntlmlib.constants import NegotiateFlag
 
 logger = logging.getLogger(__name__)
 
+"""
+TODO!!
+There is some inconsistency in the design between the context and the authenticator that needs to be addressed.
+when session security is used we need to know get session key and get the key exchange key - but this is not
+sensible with the current design.
+the session key and the keyex key depend on the negotiate flags, the challenge response and the server key.
 
+we need to know the session key and keyex key.
+get_session_key(flags, )
+get_key_exchange_key()
+
+"""
 class NtlmContext(object):
     """
     For initiating NTLM authentication (including NTLMv2). If you want to add NTLMv2 authentication support to something
@@ -176,6 +187,12 @@ class NtlmContext(object):
 
         # If session security was negotiated we should construct an appropriate object to perform the subsequent
         # message wrapping and unwrapping
+
+        # We need a factory which will construct the correct wrapper based on the flags, it needs to support
+        # NTLM1 and NTLM2 Session Security. This is tricky, because it needs the correct key based on flags
+        # for NTLM1, 'Negotiate Lan Manager Key' determines if we need a User Session Key or Lan Manager Session Key
+        # this needs to be done in advance by whatever computes the master key and key exchange key
+        #
         if flags & NegotiateFlag.NTLMSSP_SEAL:
             self._wrapper = Ntlm2Sealing(flags, session_key)
         elif flags & NegotiateFlag.NTLMSSP_SIGN:
