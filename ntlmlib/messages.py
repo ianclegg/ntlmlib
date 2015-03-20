@@ -15,11 +15,13 @@ __author__ = 'ian.clegg@sourcewarp.com'
 
 import struct
 
-from ordereddict import OrderedDict
 from ntlmlib.structure import Structure
 from constants import NegotiateFlag
 
-
+try:
+    from collections import OrderedDict
+except ImportError:
+    from ordereddict import OrderedDict
 
 class Message(object):
     def dump_flags(self):
