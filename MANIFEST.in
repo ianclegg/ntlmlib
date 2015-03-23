@@ -1,0 +1,2 @@
+include versioneer.py
+include ntlmlib\_version.py
