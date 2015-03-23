@@ -11,12 +11,11 @@ install:
 script:
 - py.test -v --cov ntlmlib --cov-report term-missing ntlmlib/tests/CI
 after_success:
+- echo "travis tag $TRAVIS_TAG"
 - pushd .
 - coveralls
-- pwd && cd src
 - python setup.py sdist
-- cd ..
-- pwd && cd src/dist
+- cd dist
 - pip install ntlmlib-*.tar.gz
 - echo "y" | pip uninstall ntlmlib
 - popd
