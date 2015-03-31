@@ -41,7 +41,7 @@ setup(
     keywords='ntlm ntlmv2 gss gssapi sign seal authentication'.split(' '),
     author='Ian Clegg',
     author_email='ian.clegg@sourcewarp.com',
-    url='http://github.com/iclegg/ntlmlib/',
+    url='http://github.com/ianclegg/ntlmlib/',
     license='MIT license',
     packages=['ntlmlib'],
     package_data={},
