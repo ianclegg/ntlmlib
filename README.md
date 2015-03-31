@@ -3,14 +3,14 @@
 ## Vision:
 A robust, fast and efficient 'first-class' Python Library for NTLM authentication, signing and encryption
 
-[x] Support for LM, NTLM and NTLMv2 authentication
-[x] Support for NTLM1 and NTLM2 Extended Session Security with 40bit, 56bit and 128bit key derivation and key exchange
-[x] Support for Session Security Signing (Sign and Verify) and Encryption (Sealing and Unsealing)
-[x] Support for enhanced security using MICs (Message Integrity Code)
-[ ] Support for enhanced security using Channel Binding Tokens
-[x] Tested against Windows NT4 RTM through to Windows 10
-[x] Well organised and commented with supporting unit tests and documentation
-[x] Super safe and easy to use API
+- [x] Support for LM, NTLM and NTLMv2 authentication
+- [x] Support for NTLM1 and NTLM2 Extended Session Security with 40bit, 56bit and 128bit key derivation and key exchange
+- [x] Support for Session Security Signing (Sign and Verify) and Encryption (Sealing and Unsealing)
+- [x] Support for enhanced security using MICs (Message Integrity Code)
+- [ ] Support for enhanced security using Channel Binding Tokens
+- [x] Tested against Windows NT4 RTM through to Windows 10
+- [x] Well organised and commented with supporting unit tests and documentation
+- [x] Super safe and easy to use API
 
 Known Issues:
 - Use of Lan Manger Session Keys is not implemented yet
