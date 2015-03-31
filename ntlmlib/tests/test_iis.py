@@ -24,7 +24,7 @@ import re
 
 class IISIntegrationTestCase(unittest.TestCase):
 
-    @unittest.skip("Skip integration tests")
+
     def test_skip_me(self):
         auth = PasswordAuthentication('SERVER2012', 'Administrator', 'Pa55w0rd', compatibility=3, timestamp=True)
         ntlm_context = NtlmContext(auth, session_security='none')
@@ -36,7 +36,7 @@ class IISIntegrationTestCase(unittest.TestCase):
         encoded = base64.b64encode(token)
         session = Session()
         session.headers.update({'Authorization': 'NTLM ' + encoded})
-        response = session.post("http://192.168.137.154:5985/wsman")
+        response = session.post("http://192.168.137.238:80")
 
         ntlm_regex = re.compile('(?:.*,)*\s*NTLM\s*([^,]*),?', re.I)
         authreq = response.headers.get('www-authenticate', None)
@@ -54,5 +54,5 @@ class IISIntegrationTestCase(unittest.TestCase):
 
         encoded_response_token = base64.b64encode(response_token)
         session.headers.update({'Authorization': 'NTLM ' + encoded_response_token})
-        response = session.get("http://192.168.137.154:5985/")
+        response = session.get("http://192.168.137.238:80/")
         print response.content

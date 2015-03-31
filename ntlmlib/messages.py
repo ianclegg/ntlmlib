@@ -379,7 +379,7 @@ class ChallengeResponse(Structure, Version, Message):
         self['session_key_offset'] = self['ntlm_offset'] + len(self['ntlm'])
         return Structure.get_data(self)
 
-    def from_string(self,data):
+    def from_string(self, data):
         Structure.from_string(self, data)
         # [MS-NLMP] page 27
         # Payload data can be present in any order within the Payload field,

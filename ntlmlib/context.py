@@ -154,9 +154,9 @@ class NtlmContext(object):
         # If NTLM v2 authentication is used and the CHALLENGE_MESSAGE contains a TargetInfo field, the client SHOULD
         # NOT send the LmChallengeResponse and SHOULD set the LmChallengeResponseLen and LmChallengeResponseMaxLen
         if challenge_target is None and target_info is None:
-            lm_response = None
+            lm_response = ''
         else:
-            lm_response = self._authenticator.get_lm_response(flags, nonce)
+            lm_response, session_key = self._authenticator.get_lm_response(flags, nonce)
 
         # [MS-NLMP] v20140502 NT LAN Manager (NTLM) Authentication Protocol (Page 46)
         # If the we negotiated key exchange, generate a new new master key for the session, this is RC4-encrypted
@@ -182,7 +182,7 @@ class NtlmContext(object):
 
         # If the authenticate response has the MIC flag set, we must calculate and set the mic field the 'authenticator'
         # object determines when mic code generation is required and sets this flag
-        if _mic_required(target_info['target_info_fields']):
+        if _mic_required(target_info):
             _add_mic(authenticate, session_key, negotiate_token, challenge_token)
 
         # If session security was negotiated we should construct an appropriate object to perform the subsequent
@@ -216,8 +216,8 @@ def _mic_required(target_info):
     :return: a boolean value indicating that the MIC flag is set
     """
     if target_info is not None and target_info[TargetInfo.NTLMSSP_AV_FLAGS] is not None:
-        flags = target_info[TargetInfo.NTLMSSP_AV_FLAGS]
-        return bool(flags & 0x2)
+        flags = struct.unpack('<I', target_info[TargetInfo.NTLMSSP_AV_FLAGS][1])[0]
+        return bool(flags & 0x00000002)
 
 def _add_mic(authenticate, session_key, negotiate_token, challenge_token):
     """
@@ -230,9 +230,7 @@ def _add_mic(authenticate, session_key, negotiate_token, challenge_token):
     """
     # before computing the MIC, the version field must be preset and the MIC
     # field must be zeroed out of the authenticate message.
-    # WE NEED TO SET THE AV FLAG TO!! WHEN, HOW
     authenticate['mic'] = '\x00' * 16
-    # TODO determine version we will use, Windows 7 for now
     authenticate['version'] = '\x06\x01\xb1\x1d\x00\x00\x00\x0f'
     authenticate_token = authenticate.get_data()
 
@@ -241,5 +239,7 @@ def _add_mic(authenticate, session_key, negotiate_token, challenge_token):
     mic.update(negotiate_token)
     mic.update(challenge_token)
     mic.update(authenticate_token)
-    return mic.digest()
+
+    # set the MIC
+    authenticate['mic'] = mic.digest()
 
