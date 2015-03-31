@@ -10,14 +10,7 @@ install:
 script:
 - py.test -v --cov ntlmlib --cov-report term-missing ntlmlib/tests/CI
 after_success:
-- printenv
-- pushd .
 - coveralls
-- python setup.py sdist
-- cd dist
-- pip install ntlmlib-*.tar.gz
-- echo "y" | pip uninstall ntlmlib
-- popd
 deploy:
   provider: pypi
   server: https://pypi.python.org/pypi
@@ -28,3 +21,4 @@ deploy:
   on:
     tags: true
     all_branches: true
+    python: 2.7
