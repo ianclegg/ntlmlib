@@ -2,7 +2,6 @@ language: python
 python:
 - 2.6
 - 2.7
-- 3.2
 - 3.3
 - pypy
 install:
@@ -27,4 +26,5 @@ deploy:
   password:
     secure: r3rO2mEJXByATsc5Rqsd4+NUpGvacyhnJhZva6no1XQNgemUhE2NlABqeKnaipz/hafp+Z/0yH90Hw871lolAWDpUfI2vUZ+bOcwZ1J9EFiZwJnZn6Sb+XIyLMutBImWp2Zl8nOfFxW0Lv9OIPqtHCY+OBo97ZhPv7B0SPlhtG0=
   on:
-    branch: release
+    tags: true
+    all_branches: true
