@@ -11,7 +11,7 @@ install:
 script:
 - py.test -v --cov ntlmlib --cov-report term-missing ntlmlib/tests/CI
 after_success:
-- echo "travis tag $TRAVIS_TAG"
+- printenv
 - pushd .
 - coveralls
 - python setup.py sdist
