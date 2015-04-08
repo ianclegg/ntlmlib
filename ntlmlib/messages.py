@@ -16,7 +16,7 @@ __author__ = 'ian.clegg@sourcewarp.com'
 import struct
 
 from ntlmlib.structure import Structure
-from constants import NegotiateFlag
+from ntlmlib.constants import NegotiateFlag
 
 try:
     from collections import OrderedDict
@@ -28,53 +28,53 @@ class Message(object):
         if self['flags'] is None:
             return
 
-        print 'NTLM Flags: {0:032b}'.format(self['flags'])
+        print('NTLM Flags: {0:032b}'.format(self['flags']))
         if self['flags'] & NegotiateFlag.NTLMSSP_UNICODE:
-            print "NTLMSSP_UNICODE (Negotiate Unicode)"
+            print("NTLMSSP_UNICODE (Negotiate Unicode)")
         if self['flags'] & NegotiateFlag.NTLMSSP_OEM:
-            print "NTLMSSP_OEM (Negotiate OEM)"
+            print("NTLMSSP_OEM (Negotiate OEM)")
         if self['flags'] & NegotiateFlag.NTLMSSP_TARGET:
-            print "NTLMSSP_TARGET (Request Target)"
+            print("NTLMSSP_TARGET (Request Target)")
         if self['flags'] & NegotiateFlag.NTLMSSP_SIGN:
-            print "NTLMSSP_SIGN (Negotiate Sign)"
+            print("NTLMSSP_SIGN (Negotiate Sign)")
         if self['flags'] & NegotiateFlag.NTLMSSP_SEAL:
-            print "NTLMSSP_SEAL (Negotiate Seal)"
+            print("NTLMSSP_SEAL (Negotiate Seal)")
         if self['flags'] & NegotiateFlag.NTLMSSP_DATAGRAM:
-            print "NTLMSSP_DATAGRAM (Negotiate Datagram Style)"
+            print("NTLMSSP_DATAGRAM (Negotiate Datagram Style)")
         if self['flags'] & NegotiateFlag.NTLMSSP_LM_KEY:
-            print "NTLMSSP_LM_KEY (Negotiate Lan Manager Key)"
+            print("NTLMSSP_LM_KEY (Negotiate Lan Manager Key)")
         if self['flags'] & NegotiateFlag.NTLMSSP_NETWARE:
-            print "NTLMSSP_NETWARE (Negotiate Netware)"
+            print("NTLMSSP_NETWARE (Negotiate Netware)")
         if self['flags'] & NegotiateFlag.NTLMSSP_NTLM_KEY:
-            print "NTLMSSP_NTLM_KEY (Negotiate NTLM Key)"
+            print("NTLMSSP_NTLM_KEY (Negotiate NTLM Key)")
         if self['flags'] & NegotiateFlag.NTLMSSP_ANONYMOUS:
-            print "NTLMSSP_ANONYMOUS (Anonymous Context)"
+            print("NTLMSSP_ANONYMOUS (Anonymous Context)")
         if self['flags'] & NegotiateFlag.NTLMSSP_DOMAIN:
-            print "NTLMSSP_DOMAIN (Domain Supplied)"
+            print("NTLMSSP_DOMAIN (Domain Supplied)")
         if self['flags'] & NegotiateFlag.NTLMSSP_WORKSTATION:
-            print "NTLMSSP_WORKSTATION (Workstation Supplied)"
+            print("NTLMSSP_WORKSTATION (Workstation Supplied)")
         if self['flags'] & NegotiateFlag.NTLMSSP_LOCAL_CALL:
-            print "NTLMSSP_LOCAL_CALL (Local Call)"
+            print("NTLMSSP_LOCAL_CALL (Local Call)")
         if self['flags'] & NegotiateFlag.NTLMSSP_ALWAYS_SIGN:
-            print "NTLMSSP_ALWAYS_SIGN (Always Sign)"
+            print("NTLMSSP_ALWAYS_SIGN (Always Sign)")
         if self['flags'] & NegotiateFlag.NTLMSSP_TARGET_TYPE_DOMAIN:
-            print "NTLMSSP_TARGET_TYPE_DOMAIN ()"
+            print("NTLMSSP_TARGET_TYPE_DOMAIN ()")
         if self['flags'] & NegotiateFlag.NTLMSSP_TARGET_TYPE_SERVER:
-            print "NTLMSSP_TARGET_TYPE_SERVER ()"
+            print("NTLMSSP_TARGET_TYPE_SERVER ()")
         if self['flags'] & NegotiateFlag.NTLMSSP_TARGET_TYPE_SHARE:
-            print "NTLMSSP_TARGET_TYPE_SHARE ()"
+            print("NTLMSSP_TARGET_TYPE_SHARE ()")
         if self['flags'] & NegotiateFlag.NTLMSSP_NTLM2_KEY:
-            print "NTLMSSP_NTLM2_KEY (NTLM2 used signing and sealing)"
+            print("NTLMSSP_NTLM2_KEY (NTLM2 used signing and sealing)")
         if self['flags'] & NegotiateFlag.NTLMSSP_TARGET_INFO:
-            print "NTLMSSP_TARGET_INFO (Negotiate Target Info)"
+            print("NTLMSSP_TARGET_INFO (Negotiate Target Info)")
         if self['flags'] & NegotiateFlag.NTLMSSP_VERSION:
-            print "NTLMSSP_VERSION (Version)"
+            print("NTLMSSP_VERSION (Version)")
         if self['flags'] & NegotiateFlag.NTLMSSP_KEY_128:
-            print "NTLMSSP_KEY_128 (Negotiate 128)"
+            print("NTLMSSP_KEY_128 (Negotiate 128)")
         if self['flags'] & NegotiateFlag.NTLMSSP_KEY_EXCHANGE:
-            print "NTLMSSP_KEY_EXCHANGE (Negotiate Key Exchange)"
+            print("NTLMSSP_KEY_EXCHANGE (Negotiate Key Exchange)")
         if self['flags'] & NegotiateFlag.NTLMSSP_NEGOTIATE_56:
-            print "NTLMSSP_NEGOTIATE_56 (Negotiate 56)"
+            print("NTLMSSP_NEGOTIATE_56 (Negotiate 56)")
 
 class TargetInfo(object):
     NTLMSSP_AV_EOL              = 0x00
@@ -125,7 +125,7 @@ class TargetInfo(object):
 
     def dump(self):
         for i in self.fields.keys():
-            print "%s: {%r}" % (i, self[i])
+            print("%s: {%r}" % (i, self[i]))
 
     def get_data(self):
         if self.fields.has_key(TargetInfo.NTLMSSP_AV_EOL):

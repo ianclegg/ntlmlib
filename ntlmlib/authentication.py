@@ -21,8 +21,8 @@ import os
 import struct
 import calendar
 import time
-from messages import TargetInfo
-from constants import NegotiateFlag
+from ntlmlib.messages import TargetInfo
+from ntlmlib.constants import NegotiateFlag
 
 
 class PasswordAuthentication(object):
