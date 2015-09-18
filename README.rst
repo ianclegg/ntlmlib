@@ -1,14 +1,14 @@
-ntlmlib |travis| |version| |download| 
-===========================================
+ntlmlib |travis| |version| |support|
+====================================
 **A robust, fast and efficient 'first-class' Python Library for NTLM authentication, signing and encryption**
 
 .. |travis| image:: https://travis-ci.org/ianclegg/ntlmlib.svg?branch=master
             :target: https://travis-ci.org/ianclegg/ntlmlib
 
-.. |version| image:: https://pypip.in/version/ntlmlib/badge.svg
+.. |version| image:: https://img.shields.io/pypi/v/ntlmlib.svg
              :target: https://pypi.python.org/pypi/ntlmlib/
 
-.. |download| image:: https://pypip.in/download/ntlmlib/badge.svg
+.. |support| image:: https://img.shields.io/pypi/pyversions/ntlmlib.svg
               :target: https://pypi.python.org/pypi/ntlmlib/
 
 Authentication should be so easy its taken for granted; but that doesnt make it easy. It's probably why most libraries implemented only the most basic features, emulating decade old versions like that of Windows 2000 or XP and ignoring session security altogether

@@ -191,18 +191,28 @@ class _Ntlm2Session(object):
     server_signing = "session key to server-to-client signing key magic constant\x00"
     server_sealing = "session key to server-to-client sealing key magic constant\x00"
 
-    def __init__(self, flags, session_key):
+    """
+    """
+    def __init__(self, flags, session_key, mode):
         self.key_exchange = True
-        self.client_sequence = 0
-        self.server_sequence = 0
+        self.outgoing_sequence = 0
+        self.incoming_sequence = 0
         session_key = _Ntlm2Session._weaken_key(flags, session_key)
-        self.client_signing_key = _Ntlm2Session._generate_key(session_key + _Ntlm2Session.client_signing)
-        self.server_signing_key = _Ntlm2Session._generate_key(session_key + _Ntlm2Session.server_signing)
-
+        client_signing_key = _Ntlm2Session._generate_key(session_key + _Ntlm2Session.client_signing)
+        server_signing_key = _Ntlm2Session._generate_key(session_key + _Ntlm2Session.server_signing)
         client_sealing_key = _Ntlm2Session._generate_key(session_key + _Ntlm2Session.client_sealing)
         server_sealing_key = _Ntlm2Session._generate_key(session_key + _Ntlm2Session.server_sealing)
-        self.client_seal = ARC4.new(client_sealing_key)
-        self.server_seal = ARC4.new(server_sealing_key)
+
+        if mode=='client':
+            self.outgoing_signing_key = client_signing_key
+            self.incoming_signing_key = server_signing_key
+            self.outgoing_seal = ARC4.new(client_sealing_key)
+            self.incoming_seal = ARC4.new(server_sealing_key)
+        elif mode=='server':
+            self.outgoing_signing_key = server_signing_key
+            self.incoming_signing_key = client_signing_key
+            self.outgoing_seal = ARC4.new(server_sealing_key)
+            self.incoming_seal = ARC4.new(client_sealing_key)
 
     @staticmethod
     def _generate_key(material):
@@ -238,21 +248,21 @@ class _Ntlm2Session(object):
         :param message: The message to be signed
         :return: The signature for supplied message
         """
-        hmac_context = hmac.new(self.client_signing_key)
-        hmac_context.update(struct.pack('<i', self.client_sequence) + message)
+        hmac_context = hmac.new(self.outgoing_signing_key)
+        hmac_context.update(struct.pack('<i', self.outgoing_sequence) + message)
 
         # If a key exchange key is negotiated the first 8 bytes of the HMAC MD5 are encrypted with RC4
         if self.key_exchange:
-            checksum = self.client_seal.encrypt(hmac_context.digest()[:8])
+            checksum = self.outgoing_seal.encrypt(hmac_context.digest()[:8])
         else:
             checksum = hmac_context.digest()[:8]
 
         mac = _Ntlm2MessageSignature()
         mac['checksum'] = struct.unpack('<q', checksum)[0]
-        mac['sequence'] = self.client_sequence
+        mac['sequence'] = self.outgoing_sequence
 
         # Increment the sequence number after signing each message
-        self.client_sequence += 1
+        self.outgoing_sequence += 1
         return str(mac)
 
     def verify(self, message, signature):
@@ -266,24 +276,24 @@ class _Ntlm2Session(object):
         mac.from_string(signature)
 
         # validate the sequence
-        if mac['sequence'] != self.server_sequence:
+        if mac['sequence'] != self.incoming_sequence:
             raise Exception("The message was not received in the correct sequence.")
 
         # extract the supplied checksum
         checksum = struct.pack('<q', mac['checksum'])
         if self.key_exchange:
-            checksum = self.server_seal.decrypt(checksum)
+            checksum = self.incoming_seal.decrypt(checksum)
 
         # calculate the expected checksum for the message
-        hmac_context = hmac.new(self.server_signing_key)
-        hmac_context.update(struct.pack('<i', self.server_sequence) + message)
+        hmac_context = hmac.new(self.incoming_signing_key)
+        hmac_context.update(struct.pack('<i', self.incoming_sequence) + message)
         expected_checksum = hmac_context.digest()[:8]
 
         # validate the supplied checksum is correct
         if checksum != expected_checksum:
             raise Exception("The message has been altered")
 
-        self.server_sequence += 1
+        self.incoming_sequence += 1
 
     def encrypt(self, message):
         """
@@ -291,7 +301,7 @@ class _Ntlm2Session(object):
         :param message: The message to be encrypted
         :return: The signed and encrypted message
         """
-        return self.client_seal.encrypt(message)
+        return self.outgoing_seal.encrypt(message)
 
     def decrypt(self, cipher_text):
         """
@@ -299,7 +309,7 @@ class _Ntlm2Session(object):
         :param message: The ciphertext to be decrypted
         :return: The original plaintext
         """
-        return self.server_seal.decrypt(cipher_text)
+        return self.incoming_seal.decrypt(cipher_text)
 
 
 class Ntlm2Signing(_Ntlm2Session):
@@ -317,8 +327,8 @@ class Ntlm2Sealing(_Ntlm2Session):
     """
 
     """
-    def __init__(self, flags, session_key):
-        _Ntlm2Session.__init__(self, flags, session_key)
+    def __init__(self, flags, session_key, mode='client'):
+        _Ntlm2Session.__init__(self, flags, session_key, mode)
 
     def wrap(self, message):
         """

@@ -31,16 +31,6 @@ from ntlmlib.constants import NegotiateFlag
 logger = logging.getLogger(__name__)
 
 """
-TODO!!
-There is some inconsistency in the design between the context and the authenticator that needs to be addressed.
-when session security is used we need to know get session key and get the key exchange key - but this is not
-sensible with the current design.
-the session key and the keyex key depend on the negotiate flags, the challenge response and the server key.
-
-we need to know the session key and keyex key.
-get_session_key(flags, )
-get_key_exchange_key()
-
 """
 class NtlmContext(object):
     """
@@ -61,22 +51,21 @@ class NtlmContext(object):
         # TODO, we should set the negotiate flags based on the lm level :-s
         # Note, this still works with 9x and N4.0 though
         self.flags = NegotiateFlag.NTLMSSP_TARGET |\
-                     NegotiateFlag.NTLMSSP_TARGET_INFO |\
-                     NegotiateFlag.NTLMSSP_KEY_128
-
+            NegotiateFlag.NTLMSSP_TARGET_INFO |\
+            NegotiateFlag.NTLMSSP_KEY_128
 
         if session_security == 'sign':
             self.flags |= NegotiateFlag.NTLMSSP_KEY_EXCHANGE |\
-                          NegotiateFlag.NTLMSSP_ALWAYS_SIGN |\
-                          NegotiateFlag.NTLMSSP_SIGN |\
-                          NegotiateFlag.NTLMSSP_NTLM2_KEY
+                NegotiateFlag.NTLMSSP_ALWAYS_SIGN |\
+                NegotiateFlag.NTLMSSP_SIGN |\
+                NegotiateFlag.NTLMSSP_NTLM2_KEY
 
         if session_security == 'encrypt':
             self.flags |= NegotiateFlag.NTLMSSP_KEY_EXCHANGE |\
-                          NegotiateFlag.NTLMSSP_ALWAYS_SIGN |\
-                          NegotiateFlag.NTLMSSP_SIGN  |\
-                          NegotiateFlag.NTLMSSP_SEAL |\
-                          NegotiateFlag.NTLMSSP_NTLM2_KEY
+                NegotiateFlag.NTLMSSP_ALWAYS_SIGN |\
+                NegotiateFlag.NTLMSSP_SIGN  |\
+                NegotiateFlag.NTLMSSP_SEAL |\
+                NegotiateFlag.NTLMSSP_NTLM2_KEY
 
         self._wrapper = None
         self._session_key = None
@@ -101,6 +90,22 @@ class NtlmContext(object):
         authenticate_token = self._challenge_response(negotiate_token, challenge_token)
         yield authenticate_token
 
+    def aquire_security_context(self):
+        """
+        Idiomatic Python implementation of aquire_security_context, implemented as a generator function using
+        yield to both accept incoming and return outgoing authentication tokens
+        :return: The response to be returned to the server
+        """
+        # Accept the negotiate token
+        negotiate_token = (yield)
+
+        # Generate the Challenge token
+        authenticate_token = yield self._challenge(negotiate_token)
+
+        # check the authenticate token
+        #authenticate_token
+        raise Exception("aquire_security_context is not yet implemented")
+
     def wrap_message(self, message):
         """
         Cryptographically signs and optionally encrypts the supplied message. The message is only encrypted if
@@ -114,9 +119,7 @@ class NtlmContext(object):
         else:
             return self._wrapper.wrap(message)
 
-
     def unwrap_message(self, message, signature):
-        # TODO implement signature exceptions and document
         """
         Verifies the supplied signature against the message and decrypts the message if 'confidentiality' was
         negotiated.
@@ -150,13 +153,16 @@ class NtlmContext(object):
         # used to construct the 'authenticator' object
         ntlm_response, session_key, target_info = self._authenticator.get_ntlm_response(flags, nonce, challenge_target)
 
+        # 3.1.5.2.1 Client Receives a CHALLENGE_MESSAGE
         # [MS-NLMP] v20140502 NT LAN Manager (NTLM) Authentication Protocol (Page 46)
         # If NTLM v2 authentication is used and the CHALLENGE_MESSAGE contains a TargetInfo field, the client SHOULD
         # NOT send the LmChallengeResponse and SHOULD set the LmChallengeResponseLen and LmChallengeResponseMaxLen
+
+        #### TODO Fix lm_response session key
         if challenge_target is None and target_info is None:
             lm_response = ''
         else:
-            lm_response, session_key = self._authenticator.get_lm_response(flags, nonce)
+            lm_response, fix_me = self._authenticator.get_lm_response(flags, nonce)
 
         # [MS-NLMP] v20140502 NT LAN Manager (NTLM) Authentication Protocol (Page 46)
         # If the we negotiated key exchange, generate a new new master key for the session, this is RC4-encrypted
@@ -164,7 +170,8 @@ class NtlmContext(object):
         # "This capability SHOULD be used because it improves security for message integrity or confidentiality"
         if flags & NegotiateFlag.NTLMSSP_KEY_EXCHANGE:
             cipher = ARC4.new(session_key)
-            exported_session_key = cipher.encrypt(os.urandom(16))
+            session_key = os.urandom(16)
+            exported_session_key = cipher.encrypt(session_key)
         else:
             exported_session_key = session_key
 
@@ -194,7 +201,7 @@ class NtlmContext(object):
         # this needs to be done in advance by whatever computes the master key and key exchange key
         #
         if flags & NegotiateFlag.NTLMSSP_SEAL:
-            self._wrapper = Ntlm2Sealing(flags, session_key)
+            self._wrapper = Ntlm2Sealing(flags, session_key, 'client')
         elif flags & NegotiateFlag.NTLMSSP_SIGN:
             self._wrapper = Ntlm2Signing(flags, session_key)
 
@@ -209,6 +216,7 @@ class NtlmContext(object):
 
         return authenticate.get_data()
 
+
 def _mic_required(target_info):
     """
     Checks the MsvAvFlags field of the supplied TargetInfo structure to determine in the MIC flags is set
@@ -218,6 +226,7 @@ def _mic_required(target_info):
     if target_info is not None and target_info[TargetInfo.NTLMSSP_AV_FLAGS] is not None:
         flags = struct.unpack('<I', target_info[TargetInfo.NTLMSSP_AV_FLAGS][1])[0]
         return bool(flags & 0x00000002)
+
 
 def _add_mic(authenticate, session_key, negotiate_token, challenge_token):
     """
