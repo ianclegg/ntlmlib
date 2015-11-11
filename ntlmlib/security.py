@@ -17,10 +17,14 @@ import struct
 import hashlib
 import zlib
 import hmac
+import logging
 from Crypto.Cipher import ARC4
 
+from ntlmlib.helpers import AsHex
 from ntlmlib.constants import NegotiateFlag
 from ntlmlib.structure import Structure
+
+logger = logging.getLogger(__name__)
 
 class _Ntlm2MessageSignature(Structure):
     structure = (
@@ -198,6 +202,7 @@ class _Ntlm2Session(object):
         self.outgoing_sequence = 0
         self.incoming_sequence = 0
         session_key = _Ntlm2Session._weaken_key(flags, session_key)
+        #logger.debug("Session Key after Weakening: %s", AsHex(session_key))
         client_signing_key = _Ntlm2Session._generate_key(session_key + _Ntlm2Session.client_signing)
         server_signing_key = _Ntlm2Session._generate_key(session_key + _Ntlm2Session.server_signing)
         client_sealing_key = _Ntlm2Session._generate_key(session_key + _Ntlm2Session.client_sealing)
@@ -213,6 +218,11 @@ class _Ntlm2Session(object):
             self.incoming_signing_key = client_signing_key
             self.outgoing_seal = ARC4.new(server_sealing_key)
             self.incoming_seal = ARC4.new(client_sealing_key)
+
+        #logger.debug("Client Signing Key: %s", AsHex(client_signing_key))
+        #logger.debug("Server Signing Key: %s", AsHex(server_signing_key))
+        #logger.debug("Client Sealing Key: %s", AsHex(client_sealing_key))
+        #logger.debug("Server Sealing Key: %s", AsHex(server_sealing_key))
 
     @staticmethod
     def _generate_key(material):
@@ -260,6 +270,7 @@ class _Ntlm2Session(object):
         mac = _Ntlm2MessageSignature()
         mac['checksum'] = struct.unpack('<q', checksum)[0]
         mac['sequence'] = self.outgoing_sequence
+        #logger.debug("Signing Sequence Number: %s", str(self.outgoing_sequence))
 
         # Increment the sequence number after signing each message
         self.outgoing_sequence += 1
@@ -293,6 +304,7 @@ class _Ntlm2Session(object):
         if checksum != expected_checksum:
             raise Exception("The message has been altered")
 
+        #logger.debug("Verify Sequence Number: %s", AsHex(self.outgoing_sequence))
         self.incoming_sequence += 1
 
     def encrypt(self, message):
@@ -334,7 +346,7 @@ class Ntlm2Sealing(_Ntlm2Session):
         """
         NTM GSSwrap()
         :param message: The message to be encrypted
-        :return: The signed and encrypted message
+        :return: A Tuple containing the signature and the encrypted messaging
         """
         cipher_text = _Ntlm2Session.encrypt(self, message)
         signature = _Ntlm2Session.sign(self, message)
@@ -343,8 +355,8 @@ class Ntlm2Sealing(_Ntlm2Session):
     def unwrap(self, message, signature):
         """
         NTLM GSSUnwrap()
-        :param message: The message to be encrypted
-        :return: The signed and encrypted message
+        :param message: The message to be decrypted
+        :return: The decrypted message
         """
         plain_text = _Ntlm2Session.decrypt(self, message)
         _Ntlm2Session.verify(self, plain_text, signature)

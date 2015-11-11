@@ -13,14 +13,15 @@
 # limitations under the License.
 __author__ = 'ian.clegg@sourcewarp.com'
 
-from Crypto.Hash import MD4
-from Crypto.Hash import MD5
-from Crypto.Hash import HMAC
-from Crypto.Cipher import DES
 import os
 import struct
 import calendar
 import time
+from Crypto.Hash import MD4
+from Crypto.Hash import MD5
+from Crypto.Hash import HMAC
+from Crypto.Cipher import DES
+
 from ntlmlib.messages import TargetInfo
 from ntlmlib.constants import NegotiateFlag
 
@@ -226,7 +227,7 @@ class PasswordAuthentication(object):
     @staticmethod
     def _get_lm_response(password, challenge):
         lm_hash = PasswordAuthentication.lmowfv1(password)
-        response  = PasswordAuthentication._encrypt_des_block(lm_hash[:7], challenge)
+        response = PasswordAuthentication._encrypt_des_block(lm_hash[:7], challenge)
         response += PasswordAuthentication._encrypt_des_block(lm_hash[7:14], challenge)
         response += PasswordAuthentication._encrypt_des_block(lm_hash[14:], challenge)
 

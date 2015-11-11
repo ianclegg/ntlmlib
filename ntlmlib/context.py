@@ -21,6 +21,7 @@ from socket import gethostname
 from Crypto.Hash import HMAC
 from Crypto.Cipher import ARC4
 
+from ntlmlib.helpers import AsHex
 from ntlmlib.messages import Negotiate
 from ntlmlib.messages import Challenge
 from ntlmlib.messages import ChallengeResponse
@@ -44,6 +45,9 @@ class NtlmContext(object):
         # Initialise a random default 8 byte NTLM client challenge
         self._os_version = kwargs.get('version', (6, 6, 0))
 
+        # Initialise a random default 8 byte NTLM client challenge
+        self._hostname = kwargs.get('hostname', gethostname())
+
         # TODO, should accept a list of possible in order of preference
         # these should probably be 'integrity' and 'confidentiality'
         # encrypt, sign, none would not raise an error
@@ -63,7 +67,7 @@ class NtlmContext(object):
         if session_security == 'encrypt':
             self.flags |= NegotiateFlag.NTLMSSP_KEY_EXCHANGE |\
                 NegotiateFlag.NTLMSSP_ALWAYS_SIGN |\
-                NegotiateFlag.NTLMSSP_SIGN  |\
+                NegotiateFlag.NTLMSSP_SIGN |\
                 NegotiateFlag.NTLMSSP_SEAL |\
                 NegotiateFlag.NTLMSSP_NTLM2_KEY
 
@@ -137,10 +141,7 @@ class NtlmContext(object):
 
     def _negotiate(self, flags):
         # returns the response
-        return Negotiate(flags, self._authenticator.get_domain(), gethostname()).get_data()
-
-    def hack(self, flags, session):
-        self._wrapper = Ntlm2Sealing(flags, session)
+        return Negotiate(flags, self._authenticator.get_domain(), self._hostname).get_data()
 
     def _challenge_response(self, negotiate_token, challenge_token):
         challenge = Challenge()
@@ -200,6 +201,7 @@ class NtlmContext(object):
         # for NTLM1, 'Negotiate Lan Manager Key' determines if we need a User Session Key or Lan Manager Session Key
         # this needs to be done in advance by whatever computes the master key and key exchange key
         #
+        #logger.debug("Negotiated Session Key: %s", AsHex(session_key))
         if flags & NegotiateFlag.NTLMSSP_SEAL:
             self._wrapper = Ntlm2Sealing(flags, session_key, 'client')
         elif flags & NegotiateFlag.NTLMSSP_SIGN:
