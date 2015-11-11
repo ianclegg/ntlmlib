@@ -34,7 +34,7 @@ except ImportError:
     long_description = ''
 
 requires = [
-    "pycrypto >= 2.6.1"
+    "pycrypto >= 2.6.1",
     "ordereddict",
 ]
 
