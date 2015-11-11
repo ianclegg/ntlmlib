@@ -33,6 +33,11 @@ try:
 except ImportError:
     long_description = ''
 
+requires = [
+    "pycrypto >= 2.6.1"
+    "ordereddict",
+]
+
 setup(
     name=project_name,
     version=versioneer.get_version(),
@@ -46,7 +51,7 @@ setup(
     license='Apache 2.0',
     packages=['ntlmlib'],
     package_data={},
-    install_requires=['pycrypto'],
+    install_requires=requires,
     cmdclass=versioneer.get_cmdclass(),
     classifiers=[
         'Development Status :: 3 - Alpha',
