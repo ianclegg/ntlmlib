@@ -1,18 +1,18 @@
-# (c) 2015, Ian Clegg <ian.clegg@sourcewarp.com>
-#
-# ntlmlib is licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-__author__ = 'ian.clegg@sourcewarp.com'
+"""
+ (c) 2015, Ian Clegg <ian.clegg@sourcewarp.com>
 
+ ntlmlib is licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+"""
 import struct
 import hashlib
 import zlib
@@ -26,6 +26,7 @@ from ntlmlib.structure import Structure
 
 logger = logging.getLogger(__name__)
 
+
 class _Ntlm2MessageSignature(Structure):
     structure = (
         ('version', '<L=1'),
@@ -35,6 +36,7 @@ class _Ntlm2MessageSignature(Structure):
 
     def __init__(self):
         Structure.__init__(self)
+
 
 class _Ntlm1MessageSignature(Structure):
     structure = (
@@ -143,6 +145,7 @@ class _Ntlm1Session(object):
         """
         return self._seal.decrypt(message)
 
+
 class Ntlm1Signing(_Ntlm1Session):
     def __init__(self, flags, session_key):
         _Ntlm1Session.__init__(self, flags, session_key)
@@ -152,6 +155,7 @@ class Ntlm1Signing(_Ntlm1Session):
 
     def unwrap(self, message):
         return _Ntlm1Session.verify(self, message)
+
 
 class Ntlm1Sealing(_Ntlm1Session):
     """
@@ -190,10 +194,10 @@ class _Ntlm2Session(object):
 
     This is a newer scheme which can be used with both NTLMv1 and NTLMv2 Authentication.
     """
-    client_signing = "session key to client-to-server signing key magic constant\x00"
-    client_sealing = "session key to client-to-server sealing key magic constant\x00"
-    server_signing = "session key to server-to-client signing key magic constant\x00"
-    server_sealing = "session key to server-to-client sealing key magic constant\x00"
+    client_signing = b"session key to client-to-server signing key magic constant\0"
+    client_sealing = b"session key to client-to-server sealing key magic constant\0"
+    server_signing = b"session key to server-to-client signing key magic constant\0"
+    server_sealing = b"session key to server-to-client sealing key magic constant\0"
 
     """
     """
