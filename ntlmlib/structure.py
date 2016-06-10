@@ -1,18 +1,18 @@
-# (c) 2015, Ian Clegg <ian.clegg@sourcewarp.com>
-#
-# ntlmlib is licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-__author__ = 'ian.clegg@sourcewarp.com'
+"""
+ (c) 2015, Ian Clegg <ian.clegg@sourcewarp.com>
 
+ ntlmlib is licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+"""
 from struct import pack, unpack, calcsize
 
 
@@ -124,7 +124,7 @@ class Structure:
     def get_data(self):
         if self.data is not None:
             return self.data
-        data = ''
+        data = b''
         for field in self.common_header + self.structure:
             try:
                 data += self.pack_field(field[0], field[1])
@@ -191,15 +191,15 @@ class Structure:
         if field:
             address_field = self.find_address_field_for(field)
             if (address_field is not None) and (data is None):
-                return ''
+                return b''
 
         # void specifier
         if field_format[:1] == '_':
-            return ''
+            return b''
 
         # quote specifier
         if field_format[:1] == "'" or field_format[:1] == '"':
-            return field_format[1:]
+            return field_format[1:].encode('ascii')
 
         # code specifier
         two = field_format.split('=')
@@ -251,7 +251,7 @@ class Structure:
 
         # asciiz specifier
         if field_format[:1] == 'z':
-            return str(data) + '\0'
+            return data.encode('ascii')
 
         # unicode specifier
         if field_format[:1] == 'u':
@@ -271,7 +271,7 @@ class Structure:
         
         # literal specifier
         if field_format[:1] == ':':
-            return str(data)
+            return data
 
         # struct like specifier
         return pack(field_format, data)
@@ -298,7 +298,7 @@ class Structure:
         # quote specifier
         if field_format[:1] == "'" or field_format[:1] == '"':
             answer = field_format[1:]
-            if answer != data:
+            if answer != data.decode('ascii'):
                 raise Exception("Unpacked data doesn't match constant value '%r' should be '%r'" % (data, answer))
             return answer
 
@@ -418,7 +418,7 @@ class Structure:
 
         # asciiz specifier
         if field_format[:1] == 'z':
-            return len(data)+1
+            return len(data)
 
         # asciiz specifier
         if field_format[:1] == 'u':

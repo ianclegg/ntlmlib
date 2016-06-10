@@ -1,30 +1,32 @@
-# (c) 2015, Ian Clegg <ian.clegg@sourcewarp.com>
-#
-# ntlmlib is licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-__author__ = 'ian.clegg@sourcewarp.com'
+"""
+ (c) 2015, Ian Clegg <ian.clegg@sourcewarp.com>
 
+ ntlmlib is licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+"""
 import struct
 import hashlib
 import zlib
 import hmac
 import logging
-from Crypto.Cipher import ARC4
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms
 
 from ntlmlib.helpers import AsHex
 from ntlmlib.constants import NegotiateFlag
 from ntlmlib.structure import Structure
 
 logger = logging.getLogger(__name__)
+
 
 class _Ntlm2MessageSignature(Structure):
     structure = (
@@ -35,6 +37,7 @@ class _Ntlm2MessageSignature(Structure):
 
     def __init__(self):
         Structure.__init__(self)
+
 
 class _Ntlm1MessageSignature(Structure):
     structure = (
@@ -68,7 +71,9 @@ class _Ntlm1Session(object):
     """
     def __init__(self, flags, session_key):
         self._key = _Ntlm1Session._weaken_key(flags, session_key)
-        self._seal = ARC4.new(self._key)
+        cipher = Cipher(algorithms.ARC4(self._key), mode=None, backend=default_backend())
+        self._encrypt = cipher.encryptor()
+        self._decrypt = cipher.decryptor()
         self._sequence = 0
 
     @staticmethod
@@ -93,9 +98,9 @@ class _Ntlm1Session(object):
         crc = zlib.crc32(message)
         mac = _Ntlm1MessageSignature()
 
-        mac['random'] = self._seal.encrypt(struct.pack('<i', 0))
-        mac['checksum'] = self._seal.encrypt(struct.pack('<i', crc))
-        mac['sequence'] = self._seal.encrypt(struct.pack('<i', self._sequence))
+        mac['random'] = self._encrypt.update(struct.pack('<i', 0))
+        mac['checksum'] = self._encrypt.update(struct.pack('<i', crc))
+        mac['sequence'] = self._encrypt.update(struct.pack('<i', self._sequence))
 
         # [MS-NLMP] v20140502 NT LAN Manager (NTLM) Authentication Protocol (Page 64)
         # Once all fields have been encrypted with the RC4 keystream the random pad is overwritten
@@ -112,9 +117,9 @@ class _Ntlm1Session(object):
         mac.from_string(signature)
 
         # decrypt and then unpack the signature fields in order
-        self._seal.decrypt(mac['random'])
-        crc = struct.unpack('<i', self._seal.decrypt(mac['checksum']))[0]
-        sequence = struct.unpack('<i', self._seal.decrypt(mac['sequence']))[0]
+        self._decrypt.update(mac['random'])
+        crc = struct.unpack('<i', self._decrypt.update(mac['checksum']))[0]
+        sequence = struct.unpack('<i', self._decrypt.update(mac['sequence']))[0]
 
         # validate the sequence number is what we expect
         if sequence != self._sequence:
@@ -133,7 +138,7 @@ class _Ntlm1Session(object):
         :param message: The message to be encrypted
         :return: The signed and encrypted message
         """
-        return self._seal.encrypt(message)
+        return self._encrypt.update(message)
 
     def decrypt(self, message):
         """
@@ -141,7 +146,8 @@ class _Ntlm1Session(object):
         :param message: The ciphertext to be decrypted
         :return: The original plaintext
         """
-        return self._seal.decrypt(message)
+        return self._decrypt.update(message)
+
 
 class Ntlm1Signing(_Ntlm1Session):
     def __init__(self, flags, session_key):
@@ -152,6 +158,7 @@ class Ntlm1Signing(_Ntlm1Session):
 
     def unwrap(self, message):
         return _Ntlm1Session.verify(self, message)
+
 
 class Ntlm1Sealing(_Ntlm1Session):
     """
@@ -190,10 +197,10 @@ class _Ntlm2Session(object):
 
     This is a newer scheme which can be used with both NTLMv1 and NTLMv2 Authentication.
     """
-    client_signing = "session key to client-to-server signing key magic constant\x00"
-    client_sealing = "session key to client-to-server sealing key magic constant\x00"
-    server_signing = "session key to server-to-client signing key magic constant\x00"
-    server_sealing = "session key to server-to-client sealing key magic constant\x00"
+    client_signing = b"session key to client-to-server signing key magic constant\0"
+    client_sealing = b"session key to client-to-server sealing key magic constant\0"
+    server_signing = b"session key to server-to-client signing key magic constant\0"
+    server_sealing = b"session key to server-to-client sealing key magic constant\0"
 
     """
     """
@@ -211,13 +218,17 @@ class _Ntlm2Session(object):
         if mode=='client':
             self.outgoing_signing_key = client_signing_key
             self.incoming_signing_key = server_signing_key
-            self.outgoing_seal = ARC4.new(client_sealing_key)
-            self.incoming_seal = ARC4.new(server_sealing_key)
+            client_arc4 = algorithms.ARC4(client_sealing_key)
+            server_arc4 = algorithms.ARC4(server_sealing_key)
+            self.outgoing_seal = Cipher(client_arc4, mode=None, backend=default_backend()).encryptor()
+            self.incoming_seal = Cipher(server_arc4, mode=None, backend=default_backend()).decryptor()
         elif mode=='server':
             self.outgoing_signing_key = server_signing_key
             self.incoming_signing_key = client_signing_key
-            self.outgoing_seal = ARC4.new(server_sealing_key)
-            self.incoming_seal = ARC4.new(client_sealing_key)
+            client_arc4 = algorithms.ARC4(client_sealing_key)
+            server_arc4 = algorithms.ARC4(server_sealing_key)
+            self.outgoing_seal = Cipher(server_arc4, mode=None, backend=default_backend()).encryptor()
+            self.incoming_seal = Cipher(client_arc4, mode=None, backend=default_backend()).decryptor()
 
         #logger.debug("Client Signing Key: %s", AsHex(client_signing_key))
         #logger.debug("Server Signing Key: %s", AsHex(server_signing_key))
@@ -263,7 +274,7 @@ class _Ntlm2Session(object):
 
         # If a key exchange key is negotiated the first 8 bytes of the HMAC MD5 are encrypted with RC4
         if self.key_exchange:
-            checksum = self.outgoing_seal.encrypt(hmac_context.digest()[:8])
+            checksum = self.outgoing_seal.update(hmac_context.digest()[:8])
         else:
             checksum = hmac_context.digest()[:8]
 
@@ -293,7 +304,7 @@ class _Ntlm2Session(object):
         # extract the supplied checksum
         checksum = struct.pack('<q', mac['checksum'])
         if self.key_exchange:
-            checksum = self.incoming_seal.decrypt(checksum)
+            checksum = self.incoming_seal.update(checksum)
 
         # calculate the expected checksum for the message
         hmac_context = hmac.new(self.incoming_signing_key)
@@ -313,7 +324,7 @@ class _Ntlm2Session(object):
         :param message: The message to be encrypted
         :return: The signed and encrypted message
         """
-        return self.outgoing_seal.encrypt(message)
+        return self.outgoing_seal.update(message)
 
     def decrypt(self, cipher_text):
         """
@@ -321,7 +332,7 @@ class _Ntlm2Session(object):
         :param message: The ciphertext to be decrypted
         :return: The original plaintext
         """
-        return self.incoming_seal.decrypt(cipher_text)
+        return self.incoming_seal.update(cipher_text)
 
 
 class Ntlm2Signing(_Ntlm2Session):

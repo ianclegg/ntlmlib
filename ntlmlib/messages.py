@@ -1,18 +1,18 @@
-# (c) 2015, Ian Clegg <ian.clegg@sourcewarp.com>
-#
-# ntlmlib is licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-__author__ = 'ian.clegg@sourcewarp.com'
+"""
+ (c) 2015, Ian Clegg <ian.clegg@sourcewarp.com>
 
+ ntlmlib is licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+"""
 import struct
 
 from ntlmlib.structure import Structure
@@ -22,6 +22,7 @@ try:
     from collections import OrderedDict
 except ImportError:
     from ordereddict import OrderedDict
+
 
 class Message(object):
     def dump_flags(self):
@@ -98,7 +99,7 @@ class TargetInfo(object):
         self.fields[key] = (len(value), value)
 
     def __getitem__(self, key):
-        if self.fields.has_key(key):
+        if key in self.fields:
            return self.fields[key]
         return None
 
@@ -128,10 +129,10 @@ class TargetInfo(object):
             print("%s: {%r}" % (i, self[i]))
 
     def get_data(self):
-        if self.fields.has_key(TargetInfo.NTLMSSP_AV_EOL):
+        if TargetInfo.NTLMSSP_AV_EOL in self.fields:
             del self.fields[TargetInfo.NTLMSSP_AV_EOL]
 
-        data = ''
+        data = b''
         for i in self.fields.keys():
             data += struct.pack('<HH', i, self[i][0])
             data += self[i][1]
@@ -175,8 +176,8 @@ class Negotiate(Structure, Version, Message):
         ('host_maxlen', '<H-host_name'),
         ('host_offset', '<L=0'),
         ('os_version', ':'),
-        ('domain_name', ':'),
-        ('host_name', ':'))
+        ('domain_name', 'z'),
+        ('host_name', 'z'))
 
     def __init__(self, flags=NegotiateFlag.NTLMSSP_NTLM_KEY, domain='', host=''):
         """
@@ -188,7 +189,7 @@ class Negotiate(Structure, Version, Message):
         self['flags'] = flags
         self['domain_name'] = domain
         self['host_name'] = host
-        self['os_version'] = ''
+        self['os_version'] = b''
 
     def get_domain(self):
         return self['domain_name']
@@ -331,8 +332,8 @@ class ChallengeResponse(Structure, Version, Message):
         ('session_key_max_len','<H-session_key'),
         ('session_key_offset','<L'),
         ('flags','<L'),
-        ('VersionLen','_-Version','self.check_version(self["flags"])'),
-        ('version',':=""'),
+        #('VersionLen','_-Version','self.check_version(self["flags"])'),
+        ('version',':'),
         ('MICLen','_-MIC'),
         ('mic',':=""'),
         ('domain_name',':'),
@@ -349,9 +350,9 @@ class ChallengeResponse(Structure, Version, Message):
         self['ntlm'] = nt_response
         self['domain_name'] = domain.encode('utf-16le')
         self['user_name'] = username.encode('utf-16le')
-        self['host_name'] = ''
-        self['version'] = ''
-        self['mic'] = ''
+        self['host_name'] = b''
+        self['version'] = b''
+        self['mic'] = b''
         self['session_key'] = session_key
 
     def check_version(self, flags):

@@ -1,26 +1,27 @@
-# (c) 2015, Ian Clegg <ian.clegg@sourcewarp.com>
-#
-# ntlmlib is licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-__author__ = 'ian.clegg@sourcewarp.com'
+"""
+ (c) 2015, Ian Clegg <ian.clegg@sourcewarp.com>
 
+ ntlmlib is licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+"""
 import os
 import struct
 import calendar
 import time
-from Crypto.Hash import MD4
-from Crypto.Hash import MD5
-from Crypto.Hash import HMAC
-from Crypto.Cipher import DES
+import hashlib
+
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes, hmac
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from ntlmlib.messages import TargetInfo
 from ntlmlib.constants import NegotiateFlag
@@ -30,7 +31,7 @@ class PasswordAuthentication(object):
     """
     Initializes the PasswordAuthentication with the supplied domain, username and password.
     """
-    known_des_input = "KGS!@#$%"
+    known_des_input = b'KGS!@#$%'
 
     def __init__(self, domain, username, password, **kwargs):
         """
@@ -87,9 +88,10 @@ class PasswordAuthentication(object):
         self._username = username
         self._password = password
         self._challenge = kwargs.get('challenge', None)
-        self._ansi_hash = kwargs.get('lm_hash', None)
-        self._unicode_hash = kwargs.get('ntlm_hash', None)
         self._lm_compatibility = kwargs.get('compatibility', 3)
+
+        if (self._lm_compatibility < 0) or (self._lm_compatibility > 5):
+            raise Exception('Unknown Lan Manager Compatibility Level')
 
         # Initialise a random default 8 byte NTLM client challenge
         self._client_challenge = os.urandom(8)
@@ -114,8 +116,6 @@ class PasswordAuthentication(object):
         """
         :return: The password for the user if it is available
         """
-        if self._unicode_hash is not None:
-            raise Exception('The password is not available when initialised using hashes')
         return self._password
 
     def get_compatibility_level(self):
@@ -133,17 +133,15 @@ class PasswordAuthentication(object):
         # If lm compatibility level lower than 3, but the server negotiated NTLM2, generate an
         # NTLM2 response in preference to the weaker LMv1
         if flags & NegotiateFlag.NTLMSSP_NTLM2_KEY and self._lm_compatibility < 3:
-            response, key = self._client_challenge + '\x00' * 16, None
+            response, key = self._client_challenge + b'\0' * 16, None
 
         elif 0 <= self._lm_compatibility <= 1:
             response, key = PasswordAuthentication._get_lm_response(self._password, challenge)
         elif self._lm_compatibility == 2:
             response, key = PasswordAuthentication.get_ntlmv1_response(self._password, challenge)
-        elif 3 <= self._lm_compatibility <= 5:
+        else:
             response, key = PasswordAuthentication.get_lmv2_response(self._domain, self._username, self._password,
                                                                      challenge, self._client_challenge)
-        else:
-            raise Exception('Unknown Lan Manager Compatibility Level')
         return response, key
 
     def get_ntlm_response(self, flags, challenge, target_info=None, channel_binding=None):
@@ -161,7 +159,6 @@ class PasswordAuthentication(object):
         # the LmChallengeResponse and SHOULD set the LmChallengeResponseLen and LmChallengeResponseMaxLen fields in the
         # AUTHENTICATE_MESSAGE to zero.
 
-
         # If lm compatibility level is 3 or lower, but the server negotiated NTLM2, generate an
         # NTLM2 response in preference to the weaker NTLMv1.
         if flags & NegotiateFlag.NTLMSSP_NTLM2_KEY and self._lm_compatibility < 3:
@@ -169,28 +166,27 @@ class PasswordAuthentication(object):
 
         elif 0 <= self._lm_compatibility < 3:
             response, key = PasswordAuthentication.get_ntlmv1_response(self._password, challenge)
-        elif 2 < self._lm_compatibility <= 5:
-            #
-            # We should use the timestamp included in TargetInfo, if no timestamp is set we generate one
-            # and add it to the outgoing TargetInfo.
+        else:
+            # We should use the timestamp included in TargetInfo, if no timestamp is set we generate one and add it to
+            # the outgoing TargetInfo. If the timestamp is set, we should also set the MIC flag
             if target_info is None:
                 target_info = TargetInfo()
             if target_info[TargetInfo.NTLMSSP_AV_TIME] is None:
                 timestamp = PasswordAuthentication._get_ntlm_timestamp()
             else:
+                # TODO: If the CHALLENGE_MESSAGE TargetInfo field (section 2.2.1.2) has an MsvAvTimestamp present,
+                # TODO: the client SHOULD provide a MIC.
                 timestamp = target_info[TargetInfo.NTLMSSP_AV_TIME][1]
 
             #target_info[TargetInfo.NTLMSSP_AV_FLAGS] = struct.pack('<I', 2)
             # Calculating channel bindings is poorly documented. It is implemented in winrmlib, and needs to be
             # moved here
-            if self._av_channel_bindings is True and channel_binding is not None:
-                target_info[TargetInfo.NTLMSSP_AV_CHANNEL_BINDINGS] = channel_binding
+            # if self._av_channel_bindings is True and channel_binding is not None:
+            #     target_info[TargetInfo.NTLMSSP_AV_CHANNEL_BINDINGS] = channel_binding
 
             response, key, target_info = PasswordAuthentication.get_ntlmv2_response(
                 self._domain, self._username, self._password.encode('utf-16le'), challenge,
                 self._client_challenge, timestamp, target_info)
-        else:
-            raise Exception('Unknown Lan Manager Compatibility Level')
 
         return response, key, target_info
 
@@ -199,22 +195,23 @@ class PasswordAuthentication(object):
         """
         Expand the key from a 7-byte password key into a 8-byte DES key
         """
-        key  = key[:7]
-        key += '\x00' * (7 - len(key))
-        s = chr(((ord(key[0]) >> 1) & 0x7f) << 1)
-        s += chr(((ord(key[0]) & 0x01) << 6 | ((ord(key[1]) >> 2) & 0x3f)) << 1)
-        s += chr(((ord(key[1]) & 0x03) << 5 | ((ord(key[2]) >> 3) & 0x1f)) << 1)
-        s += chr(((ord(key[2]) & 0x07) << 4 | ((ord(key[3]) >> 4) & 0x0f)) << 1)
-        s += chr(((ord(key[3]) & 0x0f) << 3 | ((ord(key[4]) >> 5) & 0x07)) << 1)
-        s += chr(((ord(key[4]) & 0x1f) << 2 | ((ord(key[5]) >> 6) & 0x03)) << 1)
-        s += chr(((ord(key[5]) & 0x3f) << 1 | ((ord(key[6]) >> 7) & 0x01)) << 1)
-        s += chr((ord(key[6]) & 0x7f) << 1)
+        key = key[:7] + b'\0' * (7 - len(key))
+        byte = struct.unpack_from('BBBBBBB', key)
+        s  = struct.pack('B', ((byte[0] >> 1) & 0x7f) << 1)
+        s += struct.pack("B", ((byte[0] & 0x01) << 6 | ((byte[1] >> 2) & 0x3f)) << 1)
+        s += struct.pack("B", ((byte[1] & 0x03) << 5 | ((byte[2] >> 3) & 0x1f)) << 1)
+        s += struct.pack("B", ((byte[2] & 0x07) << 4 | ((byte[3] >> 4) & 0x0f)) << 1)
+        s += struct.pack("B", ((byte[3] & 0x0f) << 3 | ((byte[4] >> 5) & 0x07)) << 1)
+        s += struct.pack("B", ((byte[4] & 0x1f) << 2 | ((byte[5] >> 6) & 0x03)) << 1)
+        s += struct.pack("B", ((byte[5] & 0x3f) << 1 | ((byte[6] >> 7) & 0x01)) << 1)
+        s += struct.pack("B", (byte[6] & 0x7f) << 1)
         return s
 
     @staticmethod
     def _encrypt_des_block(key, msg):
-        cipher = DES.new(PasswordAuthentication._expand_des_key(key), DES.MODE_ECB)
-        return cipher.encrypt(msg)
+        expanded = PasswordAuthentication._expand_des_key(key)
+        cipher = Cipher(algorithms.TripleDES(expanded), modes.ECB(), backend=default_backend()).encryptor()
+        return cipher.update(msg) + cipher.finalize()
 
     @staticmethod
     def _get_ntlm_timestamp():
@@ -232,7 +229,7 @@ class PasswordAuthentication(object):
         response += PasswordAuthentication._encrypt_des_block(lm_hash[14:], challenge)
 
         # The lm user session key is the first 8 bytes of the hash concatenated with 8 zero bytes
-        key_padding = '\x00' * 8
+        key_padding = b'\0' * 8
         key = lm_hash[:8] + key_padding
         return response, key
 
@@ -247,7 +244,7 @@ class PasswordAuthentication(object):
         response += PasswordAuthentication._encrypt_des_block(ntlm_hash[14:], challenge)
 
         # The NTLMv1 session key is simply the MD4 hash of the ntlm hash
-        session_hash = MD4.new()
+        session_hash = hashlib.new('md4')
         session_hash.update(ntlm_hash)
         return response, session_hash.digest()
 
@@ -256,7 +253,7 @@ class PasswordAuthentication(object):
         """
         Generate the Unicode MD4 hash for the password associated with these credentials.
         """
-        md5 = MD5.new()
+        md5 = hashlib.new('md5')
         md5.update(server_challenge + client_challenge)
         ntlm2_session_hash = md5.digest()[:8]
         ntlm_hash = PasswordAuthentication.ntowfv1(password.encode('utf-16le'))
@@ -264,29 +261,23 @@ class PasswordAuthentication(object):
         response += PasswordAuthentication._encrypt_des_block(ntlm_hash[7:14], ntlm2_session_hash)
         response += PasswordAuthentication._encrypt_des_block(ntlm_hash[14:], ntlm2_session_hash)
 
-        #
-        session_hash = MD4.new()
+        session_hash = hashlib.new('md4')
         session_hash.update(ntlm_hash)
-        hmac_context = HMAC.new(session_hash.digest())
+        hmac_context = hmac.HMAC(session_hash.digest(), hashes.MD5(), backend=default_backend())
         hmac_context.update(server_challenge + client_challenge)
-        return response, hmac_context.digest()
+        return response, hmac_context.finalize()
 
     @staticmethod
     def lmowfv1(password):
-        if password is None:
-            raise Exception("Password parameter is required")
-
-        password = password.upper()
+        # verify OEM codepage is always ascii
+        password = password.encode('ascii').upper()
         lmhash  = PasswordAuthentication._encrypt_des_block(password[:7], PasswordAuthentication.known_des_input)
         lmhash += PasswordAuthentication._encrypt_des_block(password[7:14], PasswordAuthentication.known_des_input)
         return lmhash
 
     @staticmethod
     def ntowfv1(password):
-        if password is None:
-            raise Exception("Password parameter is required")
-
-        md4 = MD4.new()
+        md4 = hashlib.new('md4')
         md4.update(password)
         return md4.digest()
 
@@ -301,14 +292,12 @@ class PasswordAuthentication(object):
         :param password: The users password
         :return: Hash Data
         """
-        if password is None:
-            raise Exception("Password parameter is required")
-        md4 = MD4.new()
+        md4 = hashlib.new('md4')
         md4.update(password)
-        hmac_context = HMAC.new(md4.digest())
+        hmac_context = hmac.HMAC(md4.digest(), hashes.MD5(), backend=default_backend())
         hmac_context.update(user.upper().encode('utf-16le'))
         hmac_context.update(domain.encode('utf-16le'))
-        return hmac_context.digest()
+        return hmac_context.finalize()
 
     @staticmethod
     def _compute_response(response_key, server_challenge, client_challenge):
@@ -321,10 +310,10 @@ class PasswordAuthentication(object):
         [MS-NLMP] v20140502 NT LAN Manager (NTLM) Authentication Protocol
         3.3.2 NTLM v2 Authentication
         """
-        hmac_context = HMAC.new(response_key)
+        hmac_context = hmac.HMAC(response_key, hashes.MD5(), backend=default_backend())
         hmac_context.update(server_challenge)
         hmac_context.update(client_challenge)
-        return hmac_context.digest()
+        return hmac_context.finalize()
 
     @staticmethod
     def get_lmv2_response(domain, username, password, server_challenge, client_challenge):
@@ -334,16 +323,16 @@ class PasswordAuthentication(object):
         concatenated with the 8 byte client client_challenge
         """
         ntlmv2_hash = PasswordAuthentication.ntowfv2(domain, username, password.encode('utf-16le'))
-        hmac_context = HMAC.new(ntlmv2_hash)
+        hmac_context = hmac.HMAC(ntlmv2_hash, hashes.MD5(), backend=default_backend())
         hmac_context.update(server_challenge)
         hmac_context.update(client_challenge)
-        lmv2_hash = hmac_context.digest()
+        lmv2_hash = hmac_context.finalize()
 
         # The LMv2 master user session key is a HMAC MD5 of the NTLMv2 and LMv2 hash
-        session_key = HMAC.new(ntlmv2_hash)
+        session_key = hmac.HMAC(ntlmv2_hash, hashes.MD5(), backend=default_backend())
         session_key.update(lmv2_hash)
 
-        return hmac_context.digest() + client_challenge, session_key.digest()
+        return lmv2_hash + client_challenge, session_key.finalize()
 
     @staticmethod
     def get_ntlmv2_response(domain, user, password, server_challenge, client_challenge, timestamp, target_info):
@@ -364,24 +353,24 @@ class PasswordAuthentication(object):
         :param target_info: The AttributeValuePairs structure to be returned to the server
         :return: NTLMv2 Response
         """
-        lo_response_version = '\x01'
-        hi_response_version = '\x01'
-        reserved_dword = '\x00' * 4
-        reserved_bytes = '\x00' * 6
+        lo_response_version = b'\x01'
+        hi_response_version = b'\x01'
+        reserved_dword = b'\x00' * 4
+        reserved_bytes = b'\x00' * 6
 
         response_key = PasswordAuthentication.ntowfv2(domain, user, password)
         proof_material = lo_response_version
         proof_material += hi_response_version
         proof_material += reserved_bytes
         proof_material += timestamp
-        proof_material += str(client_challenge)
+        proof_material += client_challenge
         proof_material += reserved_dword
-        proof_material += str(target_info)
+        proof_material += target_info.get_data()
         proof_material += reserved_dword
         proof = PasswordAuthentication._compute_response(response_key, server_challenge, proof_material)
 
         # The master session key derivation
-        session_key = HMAC.new(response_key)
+        session_key = hmac.HMAC(response_key, hashes.MD5(), backend=default_backend())
         session_key.update(proof)
-        session_master_key = session_key.digest()
-        return str(proof) + proof_material, session_master_key, target_info
+        session_master_key = session_key.finalize()
+        return proof + proof_material, session_master_key, target_info
