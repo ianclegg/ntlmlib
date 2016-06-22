@@ -13,18 +13,9 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 """
-import os
-import versioneer
 from setuptools import setup
 
 project_name = 'ntlmlib'
-
-# versioneer configuration
-versioneer.VCS = 'git'
-versioneer.versionfile_source = os.path.join('ntlmlib', '_version.py')
-versioneer.versionfile_build = os.path.join('ntlmlib', '_version.py')
-versioneer.tag_prefix = ''
-versioneer.parentdir_prefix = 'ntlmlib'
 
 # PyPi supports only reStructuredText, so pandoc should be installed
 # before uploading package
@@ -41,7 +32,7 @@ requires = [
 
 setup(
     name=project_name,
-    version=versioneer.get_version(),
+    version=0.72,
     description='A robust, fast and efficient ''first-class'' Python library for '
                 'NTLMv1 and NTLMv2 authentication with signing and encryption',
     long_description=long_description,
@@ -53,7 +44,6 @@ setup(
     packages=['ntlmlib'],
     package_data={},
     install_requires=requires,
-    cmdclass=versioneer.get_cmdclass(),
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Console',

@@ -23,11 +23,6 @@
 """
 import logging
 
-from ._version import get_versions
-__version__ = get_versions()['version']
-del get_versions
-
-
 # Set default logging handler to avoid "No handler found" warnings.
 try:  # Python 2.7+
     from logging import NullHandler
